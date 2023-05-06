@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+egg = "0.9"
+num-bigint = "0.4"
 pest = "2"
 pest_derive = "2"
