@@ -2,3 +2,7 @@
 name = "sid"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+pest = "2"
+pest_derive = "2"
