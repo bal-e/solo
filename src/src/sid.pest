@@ -6,25 +6,33 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 expr = { op_pre* ~ atom ~ op_suf* ~ (op_bin ~ op_pre* ~ atom ~ op_suf*)* }
 
 /// An atomic expression.
-atom = _{ expr_int | expr_arr | expr_ind | "(" ~ expr ~ ")" }
+atom = _{ expr_int | expr_arr | expr_let | expr_var | "(" ~ expr ~ ")" }
   /// An integer literal expression.
   expr_int = @{ ASCII_DIGIT+ }
   /// An array construction expression.
-  expr_arr = @{ "{" ~ (expr ~ ",")* ~ "}" }
-  /// An array index expression.
-  expr_ind = @{ "@" ~ expr_int }
+  expr_arr =  { "[" ~ (expr ~ ",")* ~ expr? ~ "]" }
+  /// A variable binding expression.
+  expr_let =  { "|" ~ (expr_bnd ~ ",")* ~ expr_bnd? ~ "|" ~ expr }
+    /// A single variable binding.
+    expr_bnd =  { expr_var ~ ":=" ~ expr }
+  /// A variable reference expression.
+  expr_var = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
 
 /// A prefix operator.
-op_pre   = _{ op_neg | op_not }
+op_pre   = _{ op_neg | op_not | op_opt }
   /// A negation operator.
   op_neg = { "-" }
   /// A logical NOT operator.
   op_not = { "~" }
+  /// An optional construction expression.
+  op_opt = { "?" }
 
 /// A suffix (postfix) operator.
-op_suf   = _{ op_map }
+op_suf   = _{ op_arr_map | op_opt_map }
   /// An array mapping operator.
-  op_map = { "[" ~ "]" }
+  op_arr_map = { "[" ~ "]" }
+  /// An optional mapping operator.
+  op_opt_map = { "." ~ "?" }
 
 /// A binary (infix) operator.
 op_bin   = _{ op_add | op_sub | op_mul | op_div | op_rem
@@ -32,6 +40,7 @@ op_bin   = _{ op_add | op_sub | op_mul | op_div | op_rem
             | op_cat | op_exp | op_red | op_mvl | op_mvr
             | op_iseq | op_isne | op_then | op_else
             | op_isle | op_islt | op_isge | op_isgt
+            | op_toeq | op_tolt
             }
   /// Addition.
   op_add = { "+" }
@@ -79,3 +88,7 @@ op_bin   = _{ op_add | op_sub | op_mul | op_div | op_rem
   op_isge = { ">=" }
   /// Compare for greater-than.
   op_isgt = { ">" }
+  /// Range up to and including.
+  op_toeq = { "..=" }
+  /// Range up to but not including.
+  op_tolt = { ".." }
