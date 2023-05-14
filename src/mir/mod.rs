@@ -7,12 +7,12 @@ use num_bigint::BigInt;
 define_language! {
     /// An MIR expression.
     pub enum Expr {
-        "@" = Ind(Id),
-
         "-" = Neg([Id; 1]),
         "~" = Not([Id; 1]),
-        "*" = Map([Id; 1]),
+        "[]" = MapArr([Id; 1]),
+        ".?" = MapOpt([Id; 1]),
         "&" = Arr([Id; 1]),
+        "?" = Opt([Id; 1]),
         "#" = Len([Id; 1]),
 
         "+" = Add([Id; 2]),
