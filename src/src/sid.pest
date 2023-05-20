@@ -9,24 +9,24 @@ bind =  { expr_var ~ ":=" ~ expr }
 expr = { op_pre* ~ atom ~ op_suf* ~ (op_bin ~ op_pre* ~ atom ~ op_suf*)* }
 
 /// An atomic expression.
-atom = _{ expr_int | expr_var | expr_arr | "(" ~ expr ~ ")" }
+atom = _{ expr_int | expr_var | expr_arr | expr_let | "(" ~ expr ~ ")" }
   /// An integer literal expression.
   expr_int = @{ ASCII_DIGIT+ }
   /// A variable reference expression.
   expr_var = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
   /// An array construction expression.
   expr_arr =  { "[" ~ (expr ~ ",")* ~ expr? ~ "]" }
+  /// A variable binding expression.
+  expr_let = { "|" ~ (bind ~ ",")* ~ bind? ~ "|" ~ expr }
 
 /// A prefix operator.
-op_pre   = _{ op_neg | op_not | op_opt | op_let }
+op_pre   = _{ op_neg | op_not | op_opt }
   /// A negation operator.
   op_neg = { "-" }
   /// A logical NOT operator.
   op_not = { "~" }
   /// An optional construction expression.
   op_opt = { "?" }
-  /// A variable binding expression.
-  op_let = { "|" ~ (bind ~ ",")* ~ bind? ~ "|" }
 
 /// A suffix (postfix) operator.
 op_suf   = _{ op_arr_map | op_opt_map }

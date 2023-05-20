@@ -4,9 +4,13 @@ use egg::{Id, define_language};
 
 use num_bigint::BigInt;
 
+pub mod src;
+
 define_language! {
     /// An MIR expression.
     pub enum Expr {
+        "[]" = NilArr,
+
         "-" = Neg([Id; 1]),
         "~" = Not([Id; 1]),
         "[]" = MapArr([Id; 1]),
@@ -33,6 +37,9 @@ define_language! {
         "<=" = IsLE([Id; 2]),
         ">"  = IsGT([Id; 2]),
         ">=" = IsGE([Id; 2]),
+
+        ".." = ToLT([Id; 2]),
+        "..=" = ToEq([Id; 2]),
 
         "?"  = Then([Id; 2]),
         ":"  = Else([Id; 2]),

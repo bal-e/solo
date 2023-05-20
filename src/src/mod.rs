@@ -13,7 +13,6 @@ pub struct SidParser;
 /// allocation; cache and reuse it as much as possible.
 pub fn pratt_parser() -> PrattParser<Rule> {
     PrattParser::new()
-        .op(Op::prefix(Rule::op_let))
         .op(Op::infix(Rule::op_then, Assoc::Left)
           | Op::infix(Rule::op_else, Assoc::Left))
         .op(Op::infix(Rule::op_iseq, Assoc::Left)
