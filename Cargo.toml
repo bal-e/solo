@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 egg = "0.9"
 num-bigint = "0.4"
-pest = "2"
-pest_derive = "2"
+pest = { path = "pest/pest" }
+pest_derive = { path = "pest/derive" }
 rustc-hash = "1.1"
 symbol_table = "0.3"
