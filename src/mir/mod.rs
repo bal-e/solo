@@ -4,9 +4,6 @@ use egg::{Id, define_language};
 
 use num_bigint::BigInt;
 
-pub mod src;
-pub mod typing;
-
 define_language! {
     /// An MIR expression node.
     pub enum ExprNode {

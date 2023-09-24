@@ -4,9 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-egg = "0.9"
-num-bigint = "0.4"
-pest = { path = "pest/pest" }
-pest_derive = { path = "pest/derive" }
-rustc-hash = "1.1"
-symbol_table = "0.3"
+egg = "0.9.5"
+num-bigint = "0.4.4"
+rustc-hash = "1.1.0"
+symbol_table = "0.3.0"
