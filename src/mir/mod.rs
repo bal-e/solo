@@ -7,45 +7,28 @@ use num_bigint::BigInt;
 define_language! {
     /// An MIR expression node.
     pub enum ExprNode {
-        "[]" = NilArr,
+        "not" = Not([Id; 1]),
 
-        "-" = Neg([Id; 1]),
-        "~" = Not([Id; 1]),
-        "[]" = MapArr([Id; 1]),
-        ".?" = MapOpt([Id; 1]),
-        "&" = Arr([Id; 1]),
-        "?" = Opt([Id; 1]),
-        "#" = Len([Id; 1]),
+        "add" = Add([Id; 2]),
+        "sub" = Sub([Id; 2]),
+        "mul" = Mul([Id; 2]),
+        "div" = Div([Id; 2]),
+        "rem" = Rem([Id; 2]),
 
-        "+" = Add([Id; 2]),
-        "-" = Sub([Id; 2]),
-        "*" = Mul([Id; 2]),
-        "/" = Div([Id; 2]),
-        "%" = Rem([Id; 2]),
+        "and" = And([Id; 2]),
+        "ior" = IOr([Id; 2]),
+        "xor" = XOr([Id; 2]),
+        "shl" = ShL([Id; 2]),
+        "shr" = ShR([Id; 2]),
 
-        "&"  = And([Id; 2]),
-        "|"  = IOr([Id; 2]),
-        "^"  = XOr([Id; 2]),
-        "<<" = ShL([Id; 2]),
-        ">>" = ShR([Id; 2]),
+        "iseq" = IsEq([Id; 2]),
+        "isne" = IsNE([Id; 2]),
+        "islt" = IsLT([Id; 2]),
+        "isle" = IsLE([Id; 2]),
+        "isgt" = IsGT([Id; 2]),
+        "isge" = IsGE([Id; 2]),
 
-        "==" = IsEq([Id; 2]),
-        "!=" = IsNE([Id; 2]),
-        "<"  = IsLT([Id; 2]),
-        "<=" = IsLE([Id; 2]),
-        ">"  = IsGT([Id; 2]),
-        ">=" = IsGE([Id; 2]),
-
-        ".." = ToLT([Id; 2]),
-        "..=" = ToEq([Id; 2]),
-
-        "?"  = Then([Id; 2]),
-        ":"  = Else([Id; 2]),
-        "~"  = Cat([Id; 2]),
-        "<?" = Exp([Id; 2]),
-        ">?" = Red([Id; 2]),
-        "<|" = MvL([Id; 2]),
-        "|>" = MvR([Id; 2]),
+        // TODO: array operations
 
         Int(BigInt),
     }
