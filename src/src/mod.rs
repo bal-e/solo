@@ -11,7 +11,7 @@ mod parsing;
 
 /// Parse a module from a file.
 pub fn parse_module<'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     name: &str,
     path: &'a Path,
 ) -> Result<Module<'a>, Error> {
@@ -50,7 +50,13 @@ pub struct Storage<'a> {
     pub pratt: parsing::SidPrattParser,
 }
 
+/// Configure a new Pratt parser.
+pub fn new_pratt() -> parsing::SidPrattParser {
+    parsing::new_pratt()
+}
+
 /// A module definition.
+#[derive(Clone, Debug)]
 pub struct Module<'a> {
     /// The name of the module.
     pub name: Symbol,
@@ -61,6 +67,7 @@ pub struct Module<'a> {
 }
 
 /// The source of a module.
+#[derive(Clone, Debug)]
 pub enum ModuleSource<'a> {
     /// Standard input.
     StdIn,
@@ -69,6 +76,7 @@ pub enum ModuleSource<'a> {
 }
 
 /// A function definition.
+#[derive(Clone, Debug)]
 pub struct Function<'a> {
     /// The name of the function.
     pub name: Symbol,
@@ -79,6 +87,7 @@ pub struct Function<'a> {
 }
 
 /// A type.
+#[derive(Clone, Debug)]
 pub struct Type {
     /// The underlying scalar type.
     pub scalar: ScalarType,
@@ -87,18 +96,21 @@ pub struct Type {
 }
 
 /// A scalar type.
+#[derive(Clone, Debug)]
 pub enum ScalarType {
     /// An unsigned 64-bit integer.
     U64,
 }
 
 /// A statement.
+#[derive(Clone, Debug)]
 pub enum Stmt<'a> {
     /// A variable declaration.
     Let(Symbol, &'a Expr<'a>),
 }
 
 /// An expression.
+#[derive(Clone, Debug)]
 pub enum Expr<'a> {
     Not(&'a Expr<'a>),
 

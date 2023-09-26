@@ -2,7 +2,7 @@ use std::iter;
 
 use pest;
 use pest::iterators::Pair;
-use pest::pratt_parser::PrattParser;
+use pest::pratt_parser::{Assoc, Op, PrattParser};
 use pest_derive::Parser;
 
 use super::*;
@@ -14,12 +14,34 @@ pub struct SidParser;
 /// A Pratt Parser for 'sid'.
 pub type SidPrattParser = PrattParser<Rule>;
 
+/// Construct a new [`SidPrattParser`].
+pub fn new_pratt() -> SidPrattParser {
+    SidPrattParser::new()
+        .op(Op::infix(Rule::op_iseq, Assoc::Left)
+          | Op::infix(Rule::op_isne, Assoc::Left)
+          | Op::infix(Rule::op_islt, Assoc::Left)
+          | Op::infix(Rule::op_isle, Assoc::Left)
+          | Op::infix(Rule::op_isgt, Assoc::Left)
+          | Op::infix(Rule::op_isge, Assoc::Left))
+        .op(Op::infix(Rule::op_shl, Assoc::Left)
+          | Op::infix(Rule::op_shr, Assoc::Left))
+        .op(Op::infix(Rule::op_add, Assoc::Left)
+          | Op::infix(Rule::op_sub, Assoc::Left))
+        .op(Op::infix(Rule::op_ior, Assoc::Left)
+          | Op::infix(Rule::op_div, Assoc::Left))
+        .op(Op::infix(Rule::op_and, Assoc::Left)
+          | Op::infix(Rule::op_xor, Assoc::Left)
+          | Op::infix(Rule::op_mul, Assoc::Left)
+          | Op::infix(Rule::op_rem, Assoc::Left))
+        .op(Op::prefix(Rule::op_not))
+}
+
 /// The type of parser errors.
 pub type Error = pest::error::Error<Rule>;
 
 /// Parse a module.
 pub fn parse_module<'i, 'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     input: Pair<'i, Rule>,
     name: Symbol,
     source: ModuleSource<'a>,
@@ -36,12 +58,13 @@ pub fn parse_module<'i, 'a>(
 
 /// Parse a function.
 pub fn parse_func<'i, 'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     input: Pair<'i, Rule>,
 ) -> Function<'a> {
     assert_eq!(Rule::func, input.as_rule());
 
     let mut pairs = input.into_inner().peekable();
+    assert_eq!(Rule::func_kw, pairs.next().unwrap().as_rule());
     let name = parse_name(storage, pairs.next().unwrap());
     let args = iter::from_fn(|| pairs
         .next_if(|p| p.as_rule() == Rule::func_arg)
@@ -55,7 +78,7 @@ pub fn parse_func<'i, 'a>(
 
 /// Parse a function argument.
 pub fn parse_func_arg<'i, 'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     input: Pair<'i, Rule>,
 ) -> (Symbol, Type) {
     assert_eq!(Rule::func_arg, input.as_rule());
@@ -69,7 +92,7 @@ pub fn parse_func_arg<'i, 'a>(
 
 /// Parse a type.
 pub fn parse_type<'i, 'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     input: Pair<'i, Rule>,
 ) -> Type {
     assert_eq!(Rule::r#type, input.as_rule());
@@ -85,7 +108,7 @@ pub fn parse_type<'i, 'a>(
 
 /// Parse a scalar type.
 pub fn parse_type_scalar<'i, 'a>(
-    _: &'a Storage<'a>,
+    _: &Storage<'a>,
     input: Pair<'i, Rule>,
 ) -> ScalarType {
     assert_eq!(Rule::type_scalar, input.as_rule());
@@ -94,7 +117,7 @@ pub fn parse_type_scalar<'i, 'a>(
 
 /// Parse an expression.
 pub fn parse_expr<'i, 'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     input: Pair<'i, Rule>,
 ) -> Expr<'a> {
     storage.pratt
@@ -149,7 +172,7 @@ pub fn parse_expr<'i, 'a>(
 
 /// Parse a variable reference expression.
 pub fn parse_expr_var<'i, 'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     input: Pair<'i, Rule>,
 ) -> Expr<'a> {
     assert_eq!(Rule::expr_var, input.as_rule());
@@ -159,7 +182,7 @@ pub fn parse_expr_var<'i, 'a>(
 
 /// Parse a block expression.
 pub fn parse_expr_blk<'i, 'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     input: Pair<'i, Rule>,
 ) -> Expr<'a> {
     assert_eq!(Rule::expr_blk, input.as_rule());
@@ -177,7 +200,7 @@ pub fn parse_expr_blk<'i, 'a>(
 
 /// Parse a statement.
 pub fn parse_stmt<'i, 'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     input: Pair<'i, Rule>,
 ) -> Stmt<'a> {
     assert_eq!(Rule::stmt, input.as_rule());
@@ -191,7 +214,7 @@ pub fn parse_stmt<'i, 'a>(
 
 /// Parse a let statement.
 pub fn parse_stmt_let<'i, 'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     input: Pair<'i, Rule>,
 ) -> Stmt<'a> {
     assert_eq!(Rule::stmt_let, input.as_rule());
@@ -206,7 +229,7 @@ pub fn parse_stmt_let<'i, 'a>(
 
 /// Parse a name.
 pub fn parse_name<'i, 'a>(
-    storage: &'a Storage<'a>,
+    storage: &Storage<'a>,
     input: Pair<'i, Rule>,
 ) -> Symbol {
     assert_eq!(Rule::name, input.as_rule());

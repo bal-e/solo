@@ -1,12 +1,67 @@
-use std::io::{self, Read};
+use std::path::PathBuf;
 
-use sid::mir::ExprNode;
-use egg::RecExpr;
+use clap::{Parser, Subcommand};
+
+use sid;
+
+/// A compiler for the Solo programming language.
+#[derive(Debug, Parser)]
+#[command(author, version)]
+struct Args {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Compile a module of Solo code.
+    Compile {
+        /// The path to the module.
+        path: PathBuf,
+    },
+}
 
 pub fn main() {
-    let mut input = String::new();
-    io::stdin().read_to_string(&mut input).unwrap();
+    let args = Args::parse();
 
-    let expr: RecExpr<ExprNode> = input.parse().unwrap();
-    println!("{expr}");
+    match args.command {
+        Some(Command::Compile { path }) => {
+            cmd_compile(path)
+        },
+        None => {
+            println!("No command provided!");
+        },
+    }
+}
+
+/// Compile a module of Solo code.
+fn cmd_compile<'a>(
+    path: PathBuf,
+) {
+    use typed_arena::Arena;
+
+    let Some(name) = path.file_stem().and_then(|n| n.to_str()) else {
+        eprintln!("'{}' is not a valid file path!", path.display());
+        std::process::exit(1);
+    };
+
+    let storage = sid::src::Storage {
+        syms: Default::default(),
+        modules: &Arena::new(),
+        funcs: &Arena::new(),
+        func_args: &Arena::new(),
+        stmts: &Arena::new(),
+        exprs: &Arena::new(),
+        pratt: sid::src::new_pratt(),
+    };
+
+    match sid::src::parse_module(&storage, name, &path) {
+        Ok(module) => {
+            println!("Module: {module:?}");
+        },
+        Err(e) => {
+            eprintln!("An error occurred: {e}");
+            std::process::exit(1);
+        },
+    }
 }
