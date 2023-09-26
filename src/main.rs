@@ -57,7 +57,7 @@ fn cmd_compile<'a>(
 
     match sid::src::parse_module(&storage, name, &path) {
         Ok(module) => {
-            println!("Module: {module:?}");
+            println!("Module: {module:#?}");
         },
         Err(e) => {
             eprintln!("An error occurred: {e}");

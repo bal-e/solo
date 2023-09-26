@@ -82,6 +82,8 @@ pub struct Function<'a> {
     pub name: Symbol,
     /// The arguments to the function.
     pub args: &'a [(Symbol, Type)],
+    /// The return type of the function.
+    pub rett: Type,
     /// The function body.
     pub body: &'a Expr<'a>,
 }

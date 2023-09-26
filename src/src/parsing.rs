@@ -70,10 +70,11 @@ pub fn parse_func<'i, 'a>(
         .next_if(|p| p.as_rule() == Rule::func_arg)
         .map(|p| parse_func_arg(storage, p)));
     let args = storage.func_args.alloc_extend(args);
+    let rett = parse_type(storage, pairs.next().unwrap());
     let body = parse_expr(storage, pairs.next().unwrap());
     let body = storage.exprs.alloc(body);
 
-    Function { name, args, body }
+    Function { name, args, rett, body }
 }
 
 /// Parse a function argument.
