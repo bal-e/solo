@@ -1,0 +1,86 @@
+//! A grammar for sid.
+
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+
+/// A module.
+module = { SOI ~ func* ~ EOI }
+
+/// A function.
+func = { func_kw ~ name ~ "(" ~ (func_arg ~ ",")* ~ func_arg? ~ ")" ~ "=" ~ expr ~ ";" }
+  func_kw = @{ "fn" ~ !(ASCII_ALPHANUMERIC | "_") }
+  func_arg = { name ~ ":" ~ type }
+
+/// A type.
+type = { type_stream? ~ type_scalar }
+  /// A type stream wrapper.
+  type_stream = { "[]" }
+  /// A scalar type.
+  type_scalar = { "u64" }
+
+/// A statement.
+stmt = { stmt_let }
+  /// A let statement.
+  stmt_let = { name ~ ":=" ~ expr }
+
+/// An arbitrary expression.
+expr = { op_pre* ~ atom ~ op_suf* ~ (op_bin ~ op_pre* ~ atom ~ op_suf*)* }
+
+/// An atomic expression.
+atom = _{ expr_int | expr_var | expr_blk | "(" ~ expr ~ ")" }
+  /// An integer literal expression.
+  expr_int = @{ ASCII_DIGIT+ }
+  /// A variable reference expression.
+  expr_var = { name }
+  /// A block expression.
+  expr_blk = { "{" ~ (stmt ~ ";")* ~ expr ~ "}" }
+
+/// A prefix operator.
+op_pre   = _{ op_not }
+  /// A logical NOT operator.
+  op_not = { "~" }
+
+/// A suffix (postfix) operator.
+op_suf   = _{ !ANY ~ ANY }
+
+/// A binary (infix) operator.
+op_bin   = _{ op_add | op_sub | op_mul | op_div | op_rem
+            | op_and | op_ior | op_xor | op_shl | op_shr
+            | op_iseq | op_isne | op_isle | op_islt | op_isge | op_isgt
+            }
+  /// Addition.
+  op_add = { "+" }
+  /// Subtraction.
+  op_sub = { "-" }
+  /// Multiplication.
+  op_mul = { "*" }
+  /// Division.
+  op_div = { "/" }
+  /// Remainder.
+  op_rem = { "%" }
+
+  /// Binary AND.
+  op_and = { "&" }
+  /// Binary inclusive OR.
+  op_ior = { "|" }
+  /// Binary exclusive OR.
+  op_xor = { "^" }
+  /// Binary left-shift.
+  op_shl = { "<<" }
+  /// Binary right-shift.
+  op_shr = { ">>" }
+
+  /// Compare for equality.
+  op_iseq = { "==" }
+  /// Compare for inequality.
+  op_isne = { "!=" }
+  /// Compare for less-than or equal-to.
+  op_isle = { "<=" }
+  /// Compare for less-than.
+  op_islt = { "<" }
+  /// Compare for greater-than or equal-to.
+  op_isge = { ">=" }
+  /// Compare for greater-than.
+  op_isgt = { ">" }
+
+/// A name.
+name = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }

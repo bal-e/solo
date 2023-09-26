@@ -1,8 +1,75 @@
+use std::io;
+use std::path::Path;
+
 use num_bigint::BigInt;
-use symbol_table::Symbol;
+use pest::Parser;
+use symbol_table::{Symbol, SymbolTable};
+use thiserror::Error;
+use typed_arena::Arena;
+
+mod parsing;
+
+/// Parse a module from a file.
+pub fn parse_module<'a>(
+    storage: &'a Storage<'a>,
+    name: &str,
+    path: &'a Path,
+) -> Result<Module<'a>, Error> {
+    let input = std::fs::read_to_string(path)?;
+    let mut input = parsing::SidParser::parse(parsing::Rule::module, &input)?;
+    let name = storage.syms.intern(name);
+    let source = ModuleSource::File(path);
+    Ok(parsing::parse_module(storage, input.next().unwrap(), name, source))
+}
+
+/// Errors from parsing.
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("An I/O error occurred: {0}")]
+    IO(#[from] io::Error),
+
+    #[error("A parsing error occurred: {0}")]
+    Parsing(#[from] parsing::Error),
+}
+
+/// Storage for AST data.
+pub struct Storage<'a> {
+    /// Storage for symbols.
+    pub syms: SymbolTable,
+    /// Storage for modules.
+    pub modules: &'a Arena<Module<'a>>,
+    /// Storage for functions.
+    pub funcs: &'a Arena<Function<'a>>,
+    /// Storage for function arguments.
+    pub func_args: &'a Arena<(Symbol, Type)>,
+    /// Storage for statements.
+    pub stmts: &'a Arena<Stmt<'a>>,
+    /// Storage for expressions.
+    pub exprs: &'a Arena<Expr<'a>>,
+    /// The Pratt parser for expressions.
+    pub pratt: parsing::SidPrattParser,
+}
+
+/// A module definition.
+pub struct Module<'a> {
+    /// The name of the module.
+    pub name: Symbol,
+    /// Functions in the module.
+    pub funcs: &'a [Function<'a>],
+    /// The source of the module.
+    pub source: ModuleSource<'a>,
+}
+
+/// The source of a module.
+pub enum ModuleSource<'a> {
+    /// Standard input.
+    StdIn,
+    /// A file at a certain path.
+    File(&'a Path),
+}
 
 /// A function definition.
-pub struct Func<'a> {
+pub struct Function<'a> {
     /// The name of the function.
     pub name: Symbol,
     /// The arguments to the function.
@@ -13,14 +80,14 @@ pub struct Func<'a> {
 
 /// A type.
 pub struct Type {
-    /// The underlying primitive type.
-    pub prim: PrimType,
+    /// The underlying scalar type.
+    pub scalar: ScalarType,
     /// Whether the type has a stream component.
-    pub is_stream: bool,
+    pub stream: bool,
 }
 
-/// A primitive type.
-pub enum PrimType {
+/// A scalar type.
+pub enum ScalarType {
     /// An unsigned 64-bit integer.
     U64,
 }
