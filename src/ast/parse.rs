@@ -1,15 +1,36 @@
+//! Parsing Solo code into an AST.
+
 use std::iter;
 
 use pest;
 use pest::iterators::Pair;
 use pest::pratt_parser::{Assoc, Op, PrattParser};
-use pest_derive::Parser;
 
 use super::*;
+use crate::src;
 
-#[derive(Parser)]
-#[grammar = "ast/solo.pest"]
-pub struct SoloParser;
+/// Parse a module from a file.
+pub fn parse_module<'a>(
+    storage: &Storage<'a>,
+    name: &str,
+    path: &'a Path,
+) -> Result<Module<'a>, Error> {
+    let input = std::fs::read_to_string(path)?;
+    let mut input = parsing::SoloParser::parse(parsing::Rule::module, &input)?;
+    let name = storage.syms.intern(name);
+    let source = ModuleSource::File(path);
+    Ok(parsing::parse_module(storage, input.next().unwrap(), name, source))
+}
+
+/// Errors from parsing.
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("An I/O error occurred: {0}")]
+    IO(#[from] io::Error),
+
+    #[error("A parsing error occurred: {0}")]
+    Parsing(#[from] parsing::Error),
+}
 
 /// A Pratt Parser for Solo.
 pub type SoloPrattParser = PrattParser<Rule>;

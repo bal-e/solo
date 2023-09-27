@@ -52,16 +52,17 @@ fn cmd_compile<'a>(
         func_args: &Arena::new(),
         stmts: &Arena::new(),
         exprs: &Arena::new(),
-        pratt: solo::ast::new_pratt(),
     };
 
-    match solo::ast::parse_module(&storage, name, &path) {
-        Ok(_) => {
-            println!("Parsing successful!");
-        },
-        Err(e) => {
-            eprintln!("An error occurred: {e}");
-            std::process::exit(1);
-        },
-    }
+    todo!()
+
+    //match solo::ast::parse_module(&storage, name, &path) {
+    //    Ok(_) => {
+    //        println!("Parsing successful!");
+    //    },
+    //    Err(e) => {
+    //        eprintln!("An error occurred: {e}");
+    //        std::process::exit(1);
+    //    },
+    //}
 }

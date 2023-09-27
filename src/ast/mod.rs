@@ -1,39 +1,14 @@
 //! An Abstract Syntax Tree (AST) for Solo.
 
-use std::io;
+use std::cmp::{Ordering, PartialOrd};
 use std::path::Path;
 
 use num_bigint::BigInt;
-use pest::Parser;
 use symbol_table::{Symbol, SymbolTable};
-use thiserror::Error;
 
 use crate::util::arena::{self, Arena};
 
-mod parsing;
-
-/// Parse a module from a file.
-pub fn parse_module<'a>(
-    storage: &Storage<'a>,
-    name: &str,
-    path: &'a Path,
-) -> Result<Module<'a>, Error> {
-    let input = std::fs::read_to_string(path)?;
-    let mut input = parsing::SoloParser::parse(parsing::Rule::module, &input)?;
-    let name = storage.syms.intern(name);
-    let source = ModuleSource::File(path);
-    Ok(parsing::parse_module(storage, input.next().unwrap(), name, source))
-}
-
-/// Errors from parsing.
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("An I/O error occurred: {0}")]
-    IO(#[from] io::Error),
-
-    #[error("A parsing error occurred: {0}")]
-    Parsing(#[from] parsing::Error),
-}
+//pub mod parse;
 
 /// Storage for AST data.
 pub struct Storage<'a> {
@@ -49,13 +24,6 @@ pub struct Storage<'a> {
     pub stmts: &'a Arena<Stmt<'a>>,
     /// Storage for expressions.
     pub exprs: &'a Arena<Expr<'a>>,
-    /// The Pratt parser for expressions.
-    pub pratt: parsing::SoloPrattParser,
-}
-
-/// Configure a new Pratt parser.
-pub fn new_pratt() -> parsing::SoloPrattParser {
-    parsing::new_pratt()
 }
 
 /// A module definition.
@@ -151,4 +119,116 @@ pub enum Expr<'a> {
         stmts: arena::RefMany<'a, Stmt<'a>>,
         rexpr: arena::Ref<'a, Expr<'a>>,
     },
+}
+
+impl<'a> Expr<'a> {
+    /// Determine the precedence of this expression.
+    ///
+    /// This is the precedence of the primary operator in the expression.
+    pub fn prec(&self) -> Prec {
+        match self {
+            Self::Not(..) => Prec::Max,
+            Self::Add(..) | Self::Sub(..) => Prec::AddSub,
+            Self::Mul(..) | Self::Div(..) | Self::Rem(..) => Prec::MulDiv,
+            Self::And(..) | Self::IOr(..) | Self::XOr(..) => Prec::Bitwise,
+            Self::ShL(..) | Self::ShR(..) => Prec::Shift,
+            Self::IsEq(..) | Self::IsNE(..) => Prec::Compare,
+            Self::IsLT(..) | Self::IsLE(..) => Prec::Compare,
+            Self::IsGT(..) | Self::IsGE(..) => Prec::Compare,
+            Self::Int(..) => Prec::Max,
+            Self::Var(..) => Prec::Max,
+            Self::Blk { .. } => Prec::Max,
+        }
+    }
+}
+
+/// Operator precedence.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Prec {
+    /// The lowest possible precedence.
+    Min,
+
+    /// The precedence of comparison operators.
+    Compare,
+
+    /// The precedence of shift operators.
+    Shift,
+
+    /// The precedence of addition and subtraction.
+    AddSub,
+
+    /// The precedence of multiplication and division.
+    MulDiv,
+
+    /// The precedence of bitwise operators.
+    Bitwise,
+
+    /// The highest possible precedence.
+    ///
+    /// This includes unary operators, because they cannot be divided into two
+    /// distinct subexpressions.
+    Max,
+}
+
+impl Prec {
+    /// The associativity for operators at this precedence.
+    ///
+    /// If [`None`] is returned, then operators at this precedence cannot be
+    /// chained to each other.
+    pub fn assoc(&self) -> Option<Assoc> {
+        match self {
+            Self::Min => None,
+            Self::Compare => None,
+            Self::Shift => None,
+            Self::AddSub => Some(Assoc::Left),
+            Self::MulDiv => Some(Assoc::Left),
+            Self::Bitwise => Some(Assoc::Left),
+            Self::Max => None,
+        }
+    }
+
+    /// Determine the associativity between two operators.
+    ///
+    /// Given two operators `a` and `b` in the expression `x <a> y <b> z`, this
+    /// function returns [`Assoc::Left`] if `y` binds to `a` or [`Assoc::Right`]
+    /// if `y` binds to `b`.  If `a` and `b` cannot be chained, [`None`] will be
+    /// returned instead.
+    pub fn cmp(lhs: Self, rhs: Self) -> Option<Assoc> {
+        match PartialOrd::partial_cmp(&lhs, &rhs)? {
+            Ordering::Less => Some(Assoc::Right),
+            Ordering::Equal => lhs.assoc(),
+            Ordering::Greater => Some(Assoc::Left),
+        }
+    }
+
+    fn is_arithmetic(&self) -> bool {
+        matches!(self, Self::AddSub | Self::MulDiv)
+    }
+
+    fn is_bitwise(&self) -> bool {
+        matches!(self, Self::Bitwise)
+    }
+}
+
+impl PartialOrd for Prec {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let (lhs, rhs) = (*self, *other);
+        if lhs.is_arithmetic() && rhs.is_bitwise() { return None; }
+        if lhs.is_bitwise() && rhs.is_arithmetic() { return None; }
+        Some(Ord::cmp(&(lhs as usize), &(rhs as usize)))
+    }
+}
+
+/// The associativity of an operator.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Assoc {
+    /// Left associativity.
+    ///
+    /// `<x> o <y> o <z>` is parsed as `(<x> o <y>) o <z>`.
+    Left,
+
+    /// Right associativity.
+    ///
+    /// `<x> o <y> o <z>` is parsed as `<x> o (<y> o <z>)`.
+    Right,
 }
