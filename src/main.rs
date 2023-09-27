@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-use sid;
+use solo;
 
 /// A compiler for the Solo programming language.
 #[derive(Debug, Parser)]
@@ -45,17 +45,17 @@ fn cmd_compile<'a>(
         std::process::exit(1);
     };
 
-    let storage = sid::src::Storage {
+    let storage = solo::src::Storage {
         syms: Default::default(),
         modules: &Arena::new(),
         funcs: &Arena::new(),
         func_args: &Arena::new(),
         stmts: &Arena::new(),
         exprs: &Arena::new(),
-        pratt: sid::src::new_pratt(),
+        pratt: solo::src::new_pratt(),
     };
 
-    match sid::src::parse_module(&storage, name, &path) {
+    match solo::src::parse_module(&storage, name, &path) {
         Ok(module) => {
             println!("Module: {module:#?}");
         },

@@ -16,7 +16,7 @@ pub fn parse_module<'a>(
     path: &'a Path,
 ) -> Result<Module<'a>, Error> {
     let input = std::fs::read_to_string(path)?;
-    let mut input = parsing::SidParser::parse(parsing::Rule::module, &input)?;
+    let mut input = parsing::SoloParser::parse(parsing::Rule::module, &input)?;
     let name = storage.syms.intern(name);
     let source = ModuleSource::File(path);
     Ok(parsing::parse_module(storage, input.next().unwrap(), name, source))
@@ -47,11 +47,11 @@ pub struct Storage<'a> {
     /// Storage for expressions.
     pub exprs: &'a Arena<Expr<'a>>,
     /// The Pratt parser for expressions.
-    pub pratt: parsing::SidPrattParser,
+    pub pratt: parsing::SoloPrattParser,
 }
 
 /// Configure a new Pratt parser.
-pub fn new_pratt() -> parsing::SidPrattParser {
+pub fn new_pratt() -> parsing::SoloPrattParser {
     parsing::new_pratt()
 }
 

@@ -1,11 +1,11 @@
-//! A Middle Intermediary Representation (MIR) for sid.
+//! A Higher Intermediary Representation (HIR) for Solo.
 
 use egg::{Id, define_language};
 
 use num_bigint::BigInt;
 
 define_language! {
-    /// An MIR expression node.
+    /// An HIR expression node.
     pub enum ExprNode {
         "not" = Not([Id; 1]),
 

@@ -1,4 +1,4 @@
-//! A grammar for sid.
+//! A grammar for Solo.
 
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 
@@ -9,7 +9,7 @@ module = { SOI ~ func* ~ EOI }
 func = { func_kw ~ name
        ~ "(" ~ (func_arg ~ ",")* ~ func_arg? ~ ")"
        ~ "->" ~ type
-       ~ "=" ~ expr
+       ~ expr_blk
        ~ ";" }
   func_kw = @{ "fn" ~ !(ASCII_ALPHANUMERIC | "_") }
   func_arg = { name ~ ":" ~ type }

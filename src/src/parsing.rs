@@ -8,15 +8,15 @@ use pest_derive::Parser;
 use super::*;
 
 #[derive(Parser)]
-#[grammar = "src/sid.pest"]
-pub struct SidParser;
+#[grammar = "src/solo.pest"]
+pub struct SoloParser;
 
-/// A Pratt Parser for 'sid'.
-pub type SidPrattParser = PrattParser<Rule>;
+/// A Pratt Parser for Solo.
+pub type SoloPrattParser = PrattParser<Rule>;
 
-/// Construct a new [`SidPrattParser`].
-pub fn new_pratt() -> SidPrattParser {
-    SidPrattParser::new()
+/// Construct a new [`SoloPrattParser`].
+pub fn new_pratt() -> SoloPrattParser {
+    SoloPrattParser::new()
         .op(Op::infix(Rule::op_iseq, Assoc::Left)
           | Op::infix(Rule::op_isne, Assoc::Left)
           | Op::infix(Rule::op_islt, Assoc::Left)
@@ -71,7 +71,7 @@ pub fn parse_func<'i, 'a>(
         .map(|p| parse_func_arg(storage, p)));
     let args = storage.func_args.alloc_extend(args);
     let rett = parse_type(storage, pairs.next().unwrap());
-    let body = parse_expr(storage, pairs.next().unwrap());
+    let body = parse_expr_blk(storage, pairs.next().unwrap());
     let body = storage.exprs.alloc(body);
 
     Function { name, args, rett, body }
