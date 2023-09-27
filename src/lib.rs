@@ -1,5 +1,5 @@
-pub mod hir;
+pub mod ast;
 pub mod tck;
-pub mod src;
+pub mod hir;
 
 pub mod util;

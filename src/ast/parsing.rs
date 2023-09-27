@@ -8,7 +8,7 @@ use pest_derive::Parser;
 use super::*;
 
 #[derive(Parser)]
-#[grammar = "src/solo.pest"]
+#[grammar = "ast/solo.pest"]
 pub struct SoloParser;
 
 /// A Pratt Parser for Solo.
@@ -51,7 +51,7 @@ pub fn parse_module<'i, 'a>(
     let funcs = input.into_inner()
         .filter(|p| p.as_rule() == Rule::func)
         .map(|p| parse_func(storage, p));
-    let funcs = storage.funcs.alloc_extend(funcs);
+    let funcs = storage.funcs.alloc_many(funcs);
 
     Module { name, funcs, source }
 }
@@ -69,7 +69,7 @@ pub fn parse_func<'i, 'a>(
     let args = iter::from_fn(|| pairs
         .next_if(|p| p.as_rule() == Rule::func_arg)
         .map(|p| parse_func_arg(storage, p)));
-    let args = storage.func_args.alloc_extend(args);
+    let args = storage.func_args.alloc_many(args);
     let rett = parse_type(storage, pairs.next().unwrap());
     let body = parse_expr_blk(storage, pairs.next().unwrap());
     let body = storage.exprs.alloc(body);
@@ -146,24 +146,24 @@ pub fn parse_expr<'i, 'a>(
             let lhs = storage.exprs.alloc(lhs);
             let rhs = storage.exprs.alloc(rhs);
             match p.as_rule() {
-                Rule::op_add => Expr::Add(lhs, rhs),
-                Rule::op_sub => Expr::Sub(lhs, rhs),
-                Rule::op_mul => Expr::Mul(lhs, rhs),
-                Rule::op_div => Expr::Div(lhs, rhs),
-                Rule::op_rem => Expr::Rem(lhs, rhs),
+                Rule::op_add => Expr::Add([lhs, rhs]),
+                Rule::op_sub => Expr::Sub([lhs, rhs]),
+                Rule::op_mul => Expr::Mul([lhs, rhs]),
+                Rule::op_div => Expr::Div([lhs, rhs]),
+                Rule::op_rem => Expr::Rem([lhs, rhs]),
 
-                Rule::op_and => Expr::And(lhs, rhs),
-                Rule::op_ior => Expr::IOr(lhs, rhs),
-                Rule::op_xor => Expr::XOr(lhs, rhs),
-                Rule::op_shl => Expr::ShL(lhs, rhs),
-                Rule::op_shr => Expr::ShR(lhs, rhs),
+                Rule::op_and => Expr::And([lhs, rhs]),
+                Rule::op_ior => Expr::IOr([lhs, rhs]),
+                Rule::op_xor => Expr::XOr([lhs, rhs]),
+                Rule::op_shl => Expr::ShL([lhs, rhs]),
+                Rule::op_shr => Expr::ShR([lhs, rhs]),
 
-                Rule::op_iseq => Expr::IsEq(lhs, rhs),
-                Rule::op_isne => Expr::IsNE(lhs, rhs),
-                Rule::op_islt => Expr::IsLT(lhs, rhs),
-                Rule::op_isle => Expr::IsLE(lhs, rhs),
-                Rule::op_isgt => Expr::IsGT(lhs, rhs),
-                Rule::op_isge => Expr::IsGE(lhs, rhs),
+                Rule::op_iseq => Expr::IsEq([lhs, rhs]),
+                Rule::op_isne => Expr::IsNE([lhs, rhs]),
+                Rule::op_islt => Expr::IsLT([lhs, rhs]),
+                Rule::op_isle => Expr::IsLE([lhs, rhs]),
+                Rule::op_isgt => Expr::IsGT([lhs, rhs]),
+                Rule::op_isge => Expr::IsGE([lhs, rhs]),
 
                 _ => unreachable!(),
             }
@@ -192,11 +192,11 @@ pub fn parse_expr_blk<'i, 'a>(
     let stmts = iter::from_fn(|| pairs
         .next_if(|p| p.as_rule() == Rule::stmt)
         .map(|p| parse_stmt(storage, p)));
-    let stmts = storage.stmts.alloc_extend(stmts);
-    let expr = parse_expr(storage, pairs.next().unwrap());
-    let expr = storage.exprs.alloc(expr);
+    let stmts = storage.stmts.alloc_many(stmts);
+    let rexpr = parse_expr(storage, pairs.next().unwrap());
+    let rexpr = storage.exprs.alloc(rexpr);
 
-    Expr::Blk(stmts, expr)
+    Expr::Blk { stmts, rexpr }
 }
 
 /// Parse a statement.

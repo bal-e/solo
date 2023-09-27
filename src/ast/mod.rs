@@ -1,3 +1,5 @@
+//! An Abstract Syntax Tree (AST) for Solo.
+
 use std::io;
 use std::path::Path;
 
@@ -5,7 +7,8 @@ use num_bigint::BigInt;
 use pest::Parser;
 use symbol_table::{Symbol, SymbolTable};
 use thiserror::Error;
-use typed_arena::Arena;
+
+use crate::util::arena::{self, Arena};
 
 mod parsing;
 
@@ -56,18 +59,18 @@ pub fn new_pratt() -> parsing::SoloPrattParser {
 }
 
 /// A module definition.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Module<'a> {
     /// The name of the module.
     pub name: Symbol,
     /// Functions in the module.
-    pub funcs: &'a [Function<'a>],
+    pub funcs: arena::RefMany<'a, Function<'a>>,
     /// The source of the module.
     pub source: ModuleSource<'a>,
 }
 
 /// The source of a module.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum ModuleSource<'a> {
     /// Standard input.
     StdIn,
@@ -76,20 +79,20 @@ pub enum ModuleSource<'a> {
 }
 
 /// A function definition.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Function<'a> {
     /// The name of the function.
     pub name: Symbol,
     /// The arguments to the function.
-    pub args: &'a [(Symbol, Type)],
+    pub args: arena::RefMany<'a, (Symbol, Type)>,
     /// The return type of the function.
     pub rett: Type,
     /// The function body.
-    pub body: &'a Expr<'a>,
+    pub body: arena::Ref<'a, Expr<'a>>,
 }
 
 /// A type.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Type {
     /// The underlying scalar type.
     pub scalar: ScalarType,
@@ -98,42 +101,42 @@ pub struct Type {
 }
 
 /// A scalar type.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum ScalarType {
     /// An unsigned 64-bit integer.
     U64,
 }
 
 /// A statement.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Stmt<'a> {
     /// A variable declaration.
-    Let(Symbol, &'a Expr<'a>),
+    Let(Symbol, arena::Ref<'a, Expr<'a>>),
 }
 
 /// An expression.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Expr<'a> {
-    Not(&'a Expr<'a>),
+    Not(arena::Ref<'a, Expr<'a>>),
 
-    Add(&'a Expr<'a>, &'a Expr<'a>),
-    Sub(&'a Expr<'a>, &'a Expr<'a>),
-    Mul(&'a Expr<'a>, &'a Expr<'a>),
-    Div(&'a Expr<'a>, &'a Expr<'a>),
-    Rem(&'a Expr<'a>, &'a Expr<'a>),
+    Add([arena::Ref<'a, Expr<'a>>; 2]),
+    Sub([arena::Ref<'a, Expr<'a>>; 2]),
+    Mul([arena::Ref<'a, Expr<'a>>; 2]),
+    Div([arena::Ref<'a, Expr<'a>>; 2]),
+    Rem([arena::Ref<'a, Expr<'a>>; 2]),
 
-    And(&'a Expr<'a>, &'a Expr<'a>),
-    IOr(&'a Expr<'a>, &'a Expr<'a>),
-    XOr(&'a Expr<'a>, &'a Expr<'a>),
-    ShL(&'a Expr<'a>, &'a Expr<'a>),
-    ShR(&'a Expr<'a>, &'a Expr<'a>),
+    And([arena::Ref<'a, Expr<'a>>; 2]),
+    IOr([arena::Ref<'a, Expr<'a>>; 2]),
+    XOr([arena::Ref<'a, Expr<'a>>; 2]),
+    ShL([arena::Ref<'a, Expr<'a>>; 2]),
+    ShR([arena::Ref<'a, Expr<'a>>; 2]),
 
-    IsEq(&'a Expr<'a>, &'a Expr<'a>),
-    IsNE(&'a Expr<'a>, &'a Expr<'a>),
-    IsLT(&'a Expr<'a>, &'a Expr<'a>),
-    IsLE(&'a Expr<'a>, &'a Expr<'a>),
-    IsGT(&'a Expr<'a>, &'a Expr<'a>),
-    IsGE(&'a Expr<'a>, &'a Expr<'a>),
+    IsEq([arena::Ref<'a, Expr<'a>>; 2]),
+    IsNE([arena::Ref<'a, Expr<'a>>; 2]),
+    IsLT([arena::Ref<'a, Expr<'a>>; 2]),
+    IsLE([arena::Ref<'a, Expr<'a>>; 2]),
+    IsGT([arena::Ref<'a, Expr<'a>>; 2]),
+    IsGE([arena::Ref<'a, Expr<'a>>; 2]),
 
     // TODO: array operations
 
@@ -144,5 +147,8 @@ pub enum Expr<'a> {
     Var(Symbol),
 
     /// A block expression.
-    Blk(&'a [Stmt<'a>], &'a Expr<'a>),
+    Blk {
+        stmts: arena::RefMany<'a, Stmt<'a>>,
+        rexpr: arena::Ref<'a, Expr<'a>>,
+    },
 }

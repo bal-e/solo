@@ -5,7 +5,7 @@
 //! external [`Vec`] of information.
 
 use std::cell::Cell;
-use std::ops::{Bound, Deref, Range, RangeBounds};
+use std::ops::{Bound, Range, RangeBounds};
 use std::slice::SliceIndex;
 
 use typed_arena;
@@ -45,6 +45,16 @@ impl<T> Arena<T> {
             .expect("Arena IDs overflowed!"));
         RefMany { inner, id }
     }
+
+    /// Get an allocated object.
+    pub fn get<'a>(&'a self, index: Ref<'a, T>) -> &'a T {
+        index.inner
+    }
+
+    /// Get a series of allocated objects.
+    pub fn get_many<'a>(&'a self, index: RefMany<'a, T>) -> &'a [T] {
+        index.inner
+    }
 }
 
 impl<T> Default for Arena<T> {
@@ -57,6 +67,7 @@ impl<T> Default for Arena<T> {
 }
 
 /// A reference to an object in an arena.
+#[derive(Copy, Clone)]
 pub struct Ref<'a, T> {
     /// The objects location in the arena.
     inner: &'a T,
@@ -71,15 +82,8 @@ impl<'a, T> Ref<'a, T> {
     }
 }
 
-impl<'a, T> Deref for Ref<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.inner
-    }
-}
-
 /// A reference to a series of objects in an arena.
+#[derive(Copy, Clone)]
 pub struct RefMany<'a, T> {
     /// The objects' location in the arena.
     inner: &'a [T],
@@ -110,13 +114,5 @@ impl<'a, T> RefMany<'a, T> {
         };
         let inner = &self.inner[index];
         RefMany { inner, id }
-    }
-}
-
-impl<'a, T> Deref for RefMany<'a, T> {
-    type Target = [T];
-
-    fn deref(&self) -> &Self::Target {
-        self.inner
     }
 }

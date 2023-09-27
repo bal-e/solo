@@ -38,26 +38,26 @@ pub fn main() {
 fn cmd_compile<'a>(
     path: PathBuf,
 ) {
-    use typed_arena::Arena;
+    use solo::util::arena::Arena;
 
     let Some(name) = path.file_stem().and_then(|n| n.to_str()) else {
         eprintln!("'{}' is not a valid file path!", path.display());
         std::process::exit(1);
     };
 
-    let storage = solo::src::Storage {
+    let storage = solo::ast::Storage {
         syms: Default::default(),
         modules: &Arena::new(),
         funcs: &Arena::new(),
         func_args: &Arena::new(),
         stmts: &Arena::new(),
         exprs: &Arena::new(),
-        pratt: solo::src::new_pratt(),
+        pratt: solo::ast::new_pratt(),
     };
 
-    match solo::src::parse_module(&storage, name, &path) {
-        Ok(module) => {
-            println!("Module: {module:#?}");
+    match solo::ast::parse_module(&storage, name, &path) {
+        Ok(_) => {
+            println!("Parsing successful!");
         },
         Err(e) => {
             eprintln!("An error occurred: {e}");
