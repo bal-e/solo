@@ -93,19 +93,25 @@ pub struct RefMany<'a, T> {
 
 impl<'a, T> RefMany<'a, T> {
     /// Get the IDs of the referenced objects.
-    pub fn ids(&self) -> Range<u32> {
+    pub fn ids(self) -> Range<u32> {
         self.id .. self.id + self.inner.len() as u32
     }
 
     /// Index a certain object for a [`Ref`].
-    pub fn index(&self, index: usize) -> Ref<'a, T> {
+    pub fn index(self, index: usize) -> Ref<'a, T> {
         let inner = &self.inner[index];
         let id = self.id + index as u32;
         Ref { inner, id }
     }
 
+    /// Iterate through references to the objects.
+    pub fn iter(self) -> impl Iterator<Item = Ref<'a, T>> {
+        self.inner.iter().enumerate()
+            .map(move |(i, inner)| Ref { inner, id: self.id + i as u32 })
+    }
+
     /// Index a certain range of objects for a [`RefMany`].
-    pub fn index_many<R>(&self, index: R) -> RefMany<'a, T>
+    pub fn index_many<R>(self, index: R) -> RefMany<'a, T>
     where R: RangeBounds<usize> + SliceIndex<[T], Output = [T]> {
         let id = self.id + match index.start_bound() {
             Bound::Included(&x) => x as u32,
