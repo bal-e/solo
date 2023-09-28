@@ -8,7 +8,8 @@ use symbol_table::{Symbol, SymbolTable};
 
 use crate::util::arena::{self, Arena};
 
-//pub mod parse;
+pub mod parse;
+pub use parse::Parser;
 
 /// Storage for AST data.
 pub struct Storage<'a> {

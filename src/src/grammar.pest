@@ -27,10 +27,12 @@ stmt = { stmt_let }
   stmt_let = { name ~ ":=" ~ expr }
 
 /// An arbitrary expression.
-expr = { op_pre* ~ atom ~ op_suf* ~ (op_bin ~ op_pre* ~ atom ~ op_suf*)* }
+expr = { expr_unit ~ (op_bin ~ expr_unit)* }
+  /// An indivisible expression.
+  expr_unit = { op_pre* ~ atom ~ op_suf* }
 
 /// An atomic expression.
-atom = _{ expr_int | expr_var | expr_blk | "(" ~ expr ~ ")" }
+atom = { expr_int | expr_var | expr_blk | "(" ~ expr ~ ")" }
   /// An integer literal expression.
   expr_int = @{ ASCII_DIGIT+ }
   /// A variable reference expression.
@@ -39,18 +41,18 @@ atom = _{ expr_int | expr_var | expr_blk | "(" ~ expr ~ ")" }
   expr_blk = { "{" ~ (stmt ~ ";")* ~ expr ~ "}" }
 
 /// A prefix operator.
-op_pre   = _{ op_not }
+op_pre   = { op_not }
   /// A logical NOT operator.
   op_not = { "~" }
 
 /// A suffix (postfix) operator.
-op_suf   = _{ !ANY ~ ANY }
+op_suf   = { !ANY ~ ANY }
 
 /// A binary (infix) operator.
-op_bin   = _{ op_add | op_sub | op_mul | op_div | op_rem
-            | op_and | op_ior | op_xor | op_shl | op_shr
-            | op_iseq | op_isne | op_isle | op_islt | op_isge | op_isgt
-            }
+op_bin   = { op_add | op_sub | op_mul | op_div | op_rem
+           | op_and | op_ior | op_xor | op_shl | op_shr
+           | op_iseq | op_isne | op_isle | op_islt | op_isge | op_isgt
+           }
   /// Addition.
   op_add = { "+" }
   /// Subtraction.
