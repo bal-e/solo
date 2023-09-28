@@ -11,6 +11,9 @@ use crate::util::arena::{self, Arena};
 pub mod parse;
 pub use parse::Parser;
 
+pub mod print;
+pub use print::Printer;
+
 pub mod visit;
 pub use visit::Visit;
 
@@ -143,6 +146,33 @@ impl<'a> Expr<'a> {
             Self::Var(..) => Prec::Max,
             Self::Blk { .. } => Prec::Max,
         }
+    }
+
+    /// Determine the symbol for this operation.
+    ///
+    /// If this expression represents some kind of unary or binary operation,
+    /// its symbol is returned.
+    pub fn code(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::Not(..) => "~",
+            Self::Add(..) => "+",
+            Self::Sub(..) => "-",
+            Self::Mul(..) => "*",
+            Self::Div(..) => "/",
+            Self::Rem(..) => "%",
+            Self::And(..) => "&",
+            Self::IOr(..) => "|",
+            Self::XOr(..) => "^",
+            Self::ShL(..) => "<<",
+            Self::ShR(..) => ">>",
+            Self::IsEq(..) => "==",
+            Self::IsNE(..) => "!=",
+            Self::IsLT(..) => "<",
+            Self::IsLE(..) => "<=",
+            Self::IsGT(..) => ">",
+            Self::IsGE(..) => ">=",
+            _ => return None,
+        })
     }
 }
 

@@ -9,8 +9,7 @@ module = { SOI ~ func* ~ EOI }
 func = { func_kw ~ name
        ~ "(" ~ (func_arg ~ ",")* ~ func_arg? ~ ")"
        ~ "->" ~ type
-       ~ expr_blk
-       ~ ";" }
+       ~ expr_blk }
   func_kw = @{ "fn" ~ !(ASCII_ALPHANUMERIC | "_") }
   func_arg = { name ~ ":" ~ type }
 
