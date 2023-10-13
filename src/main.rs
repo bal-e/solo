@@ -87,9 +87,6 @@ fn cmd_compile<'a>(
         },
     };
 
-    // Print the parsed AST back.
-    let mut output = String::new();
-    let mut printer = solo::ast::Printer::new(&mut output);
-    solo::ast::Visit::visit_module(&mut printer, &storage, ast);
-    print!("{}", output);
+    let _ = ast;
+    println!("Success!");
 }

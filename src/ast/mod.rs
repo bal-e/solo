@@ -11,12 +11,6 @@ use crate::util::arena::{self, Arena};
 pub mod parse;
 pub use parse::Parser;
 
-pub mod print;
-pub use print::Printer;
-
-pub mod visit;
-pub use visit::Visit;
-
 /// Storage for AST data.
 pub struct Storage<'a> {
     /// Storage for symbols.
