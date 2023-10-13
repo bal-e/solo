@@ -4,7 +4,6 @@ use std::iter;
 
 use pest::{self, iterators::{Pair, Pairs}};
 
-use symbol_table::Symbol;
 use thiserror::Error;
 
 use super::*;
@@ -13,14 +12,14 @@ use crate::src::Rule;
 /// A parser for grammatical Solo code.
 ///
 /// Given [`pest`]-parsed Solo code, this type can be used to construct an AST.
-pub struct Parser<'s, 'ast> {
+pub struct Parser<'ast> {
     /// Storage for the AST.
-    storage: &'s Storage<'ast>,
+    storage: &'ast Storage<'ast>,
 }
 
-impl<'s, 'ast> Parser<'s, 'ast> {
+impl<'ast> Parser<'ast> {
     /// Construct a new [`Parser`].
-    pub fn new(storage: &'s Storage<'ast>) -> Self {
+    pub fn new(storage: &'ast Storage<'ast>) -> Self {
         Self { storage }
     }
 
@@ -29,24 +28,21 @@ impl<'s, 'ast> Parser<'s, 'ast> {
         &self,
         input: Pair<'_, Rule>,
         name: &str,
-        source: ModuleSource<'ast>,
-    ) -> Result<Module<'ast>> {
+        source: ModSource<'ast>,
+    ) -> Result<Mod<'ast>> {
         assert_eq!(Rule::module, input.as_rule());
 
-        let name = self.storage.syms.intern(name);
-        let mut error = None;
+        let name = self.storage.store_ref(name);
         let funcs = input.into_inner()
             .filter(|p| p.as_rule() == Rule::func)
-            .filter_map(|p| self.parse_func(p)
-                .map_or_else(|err| { error = Some(err); None }, Some));
-        let funcs = self.storage.funcs.alloc_many(funcs);
-        if let Some(error) = error { return Err(error); }
+            .map(|p| self.parse_func(p));
+        let funcs = self.storage.store_try_many(funcs)?;
 
-        Ok(Module { name, funcs, source })
+        Ok(Mod { name, funcs, source })
     }
 
     /// Parse a function.
-    pub fn parse_func(&self, input: Pair<'_, Rule>) -> Result<Function<'ast>> {
+    pub fn parse_func(&self, input: Pair<'_, Rule>) -> Result<Fn<'ast>> {
         assert_eq!(Rule::func, input.as_rule());
 
         let mut pairs = input.into_inner().peekable();
@@ -55,23 +51,23 @@ impl<'s, 'ast> Parser<'s, 'ast> {
         let args = iter::from_fn(|| pairs
             .next_if(|p| p.as_rule() == Rule::func_arg)
             .map(|p| self.parse_func_arg(p)));
-        let args = self.storage.func_args.alloc_many(args);
+        let args = self.storage.store_many(args);
         let rett = self.parse_type(pairs.next().unwrap());
         let body = self.parse_expr_blk(pairs.next().unwrap())?;
-        let body = self.storage.exprs.alloc(body);
+        let body = self.storage.store(body);
 
-        Ok(Function { name, args, rett, body })
+        Ok(Fn { name, args, rett, body })
     }
 
     /// Parse a function argument.
-    pub fn parse_func_arg(&self, input: Pair<'_, Rule>) -> (Symbol, Type) {
+    pub fn parse_func_arg(&self, input: Pair<'_, Rule>) -> FnArg<'ast> {
         assert_eq!(Rule::func_arg, input.as_rule());
 
         let mut pairs = input.into_inner();
         let name = self.parse_name(pairs.next().unwrap());
         let r#type = self.parse_type(pairs.next().unwrap());
 
-        (name, r#type)
+        FnArg { name, r#type }
     }
 
     /// Parse a type.
@@ -96,7 +92,7 @@ impl<'s, 'ast> Parser<'s, 'ast> {
     /// Parse an expression.
     pub fn parse_expr(&self, input: Pair<'_, Rule>) -> Result<Expr<'ast>> {
         fn parse_inner<'ast>(
-            parser: &Parser<'_, 'ast>,
+            parser: &Parser<'ast>,
             prev: Option<&Pair<'_, Rule>>,
             input: &mut iter::Peekable<Pairs<'_, Rule>>,
         ) -> Result<Expr<'ast>> {
@@ -111,9 +107,9 @@ impl<'s, 'ast> Parser<'s, 'ast> {
                 }
 
                 let next = input.next().unwrap();
-                let lhs = parser.storage.exprs.alloc(expr);
+                let lhs = parser.storage.store(expr);
                 let rhs = parse_inner(parser, Some(&next), input)?;
-                let rhs = parser.storage.exprs.alloc(rhs);
+                let rhs = parser.storage.store(rhs);
 
                 // Construct the new binary expression.
                 expr = match next.into_inner().next().unwrap().as_rule() {
@@ -189,14 +185,14 @@ impl<'s, 'ast> Parser<'s, 'ast> {
     /// Parse an indivisible expression.
     pub fn parse_expr_unit(&self, input: Pair<'_, Rule>) -> Result<Expr<'ast>> {
         fn parse_pres<'ast>(
-            parser: &Parser<'_, 'ast>,
+            parser: &Parser<'ast>,
             mut input: Pairs<'_, Rule>,
         ) -> Result<Expr<'ast>> {
             let pair = input.next().unwrap();
             match pair.as_rule() {
                 Rule::op_pre => {
                     let expr = parse_pres(parser, input)?;
-                    let expr = parser.storage.exprs.alloc(expr);
+                    let expr = parser.storage.store(expr);
                     Ok(match pair.into_inner().next().unwrap().as_rule() {
                         Rule::op_not => Expr::Not(expr),
                         _ => unreachable!(),
@@ -205,7 +201,7 @@ impl<'s, 'ast> Parser<'s, 'ast> {
                 Rule::atom => {
                     let expr = parser.parse_atom(pair)?;
                     Ok(input.fold(expr, |expr, op| {
-                        let _expr = parser.storage.exprs.alloc(expr);
+                        let _expr = parser.storage.store(expr);
                         match op.as_rule() {
                             _ => unreachable!(),
                         }
@@ -224,12 +220,19 @@ impl<'s, 'ast> Parser<'s, 'ast> {
         assert_eq!(Rule::atom, input.as_rule());
         let inner = input.into_inner().next().unwrap();
         Ok(match inner.as_rule() {
-            Rule::expr_int => Expr::Int(inner.as_str().parse().unwrap()),
+            Rule::expr_int => self.parse_expr_int(inner),
             Rule::expr_var => self.parse_expr_var(inner),
             Rule::expr_blk => self.parse_expr_blk(inner)?,
             Rule::expr => self.parse_expr(inner)?,
             _ => unreachable!(),
         })
+    }
+
+    /// Parse an integer literal expression.
+    pub fn parse_expr_int(&self, input: Pair<'_, Rule>) -> Expr<'ast> {
+        assert_eq!(Rule::expr_int, input.as_rule());
+        let value: BigInt = input.as_str().parse().unwrap();
+        Expr::Int(self.storage.store(value))
     }
 
     /// Parse a variable reference expression.
@@ -249,10 +252,10 @@ impl<'s, 'ast> Parser<'s, 'ast> {
             .next_if(|p| p.as_rule() == Rule::stmt)
             .and_then(|p| self.parse_stmt(p)
                 .map_or_else(|err| { error = Some(err); None }, Some)));
-        let stmts = self.storage.stmts.alloc_many(stmts);
+        let stmts = self.storage.store_many(stmts);
         if let Some(error) = error { return Err(error); }
         let rexpr = self.parse_expr(pairs.next().unwrap())?;
-        let rexpr = self.storage.exprs.alloc(rexpr);
+        let rexpr = self.storage.store(rexpr);
 
         Ok(Expr::Blk { stmts, rexpr })
     }
@@ -275,15 +278,15 @@ impl<'s, 'ast> Parser<'s, 'ast> {
         let mut pairs = input.into_inner();
         let name = self.parse_name(pairs.next().unwrap());
         let expr = self.parse_expr(pairs.next().unwrap())?;
-        let expr = self.storage.exprs.alloc(expr);
+        let expr = self.storage.store(expr);
 
         Ok(Stmt::Let(name, expr))
     }
 
     /// Parse a name.
-    pub fn parse_name(&self, input: Pair<'_, Rule>) -> Symbol {
+    pub fn parse_name(&self, input: Pair<'_, Rule>) -> &'ast str {
         assert_eq!(Rule::name, input.as_rule());
-        self.storage.syms.intern(input.as_str())
+        self.storage.store_ref(input.as_str())
     }
 }
 

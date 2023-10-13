@@ -39,7 +39,6 @@ fn cmd_compile<'a>(
     path: PathBuf,
 ) {
     use pest::Parser;
-    use solo::util::arena::Arena;
 
     // Determine the name of the module from its file path.
     let Some(name) = path.file_stem().and_then(|n| n.to_str()) else {
@@ -68,16 +67,9 @@ fn cmd_compile<'a>(
     };
 
     // Parse the grammatical representation into an AST.
-    let storage = solo::ast::Storage {
-        syms: Default::default(),
-        modules: &Arena::new(),
-        funcs: &Arena::new(),
-        func_args: &Arena::new(),
-        stmts: &Arena::new(),
-        exprs: &Arena::new(),
-    };
+    let storage = solo::ast::Storage::new();
     let parser = solo::ast::Parser::new(&storage);
-    let source = solo::ast::ModuleSource::File(&path);
+    let source = solo::ast::ModSource::File(&path);
     let ast = match parser.parse_module(src, name, source) {
         Ok(ast) => ast,
         Err(err) => {

@@ -1,46 +1,106 @@
 //! An Abstract Syntax Tree (AST) for Solo.
 
 use std::cmp::{Ordering, PartialOrd};
+use std::ops::{Residual, Try};
 use std::path::Path;
 
 use num_bigint::BigInt;
-use symbol_table::{Symbol, SymbolTable};
+use symbol_table::SymbolTable;
 
-use crate::util::arena::{self, Arena};
+use crate::storage::*;
 
 pub mod parse;
 pub use parse::Parser;
 
 /// Storage for AST data.
+#[derive(Default)]
 pub struct Storage<'a> {
     /// Storage for symbols.
     pub syms: SymbolTable,
     /// Storage for modules.
-    pub modules: &'a Arena<Module<'a>>,
+    pub mods: ObjectStorage<Mod<'a>>,
     /// Storage for functions.
-    pub funcs: &'a Arena<Function<'a>>,
+    pub fns: ObjectStorage<Fn<'a>>,
     /// Storage for function arguments.
-    pub func_args: &'a Arena<(Symbol, Type)>,
+    pub fn_args: ObjectStorage<FnArg<'a>>,
     /// Storage for statements.
-    pub stmts: &'a Arena<Stmt<'a>>,
+    pub stmts: ObjectStorage<Stmt<'a>>,
     /// Storage for expressions.
-    pub exprs: &'a Arena<Expr<'a>>,
+    pub exprs: ObjectStorage<Expr<'a>>,
+    /// Storage for integer literals.
+    pub ints: ObjectStorage<BigInt>,
 }
 
+impl<'a> Storage<'a> {
+    /// Construct a new [`Storage`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl<'a> StoreRef<str> for Storage<'a> {
+    type Stored<'b> = &'b str where Self: 'b;
+
+    fn store_ref(&self, object: &str) -> Self::Stored<'_> {
+        let symbol = self.syms.intern(object);
+        self.syms.resolve(symbol)
+    }
+}
+
+macro_rules! def_field_store {
+    ($type:ty, $field:ident) => {
+        impl<'a> Store<$type> for Storage<'a> {
+            type Stored<'b> = &'b Stored<$type> where Self: 'b;
+
+            fn store(&self, object: $type) -> Self::Stored<'_> {
+                self.$field.store(object)
+            }
+        }
+
+        impl<'a> StoreMany<$type> for Storage<'a> {
+            type Stored<'b> = &'b [Stored<$type>] where Self: 'b;
+
+            fn store_many<I>(&self, objects: I) -> Self::Stored<'_>
+            where I: IntoIterator<Item = $type> {
+                self.$field.store_many(objects)
+            }
+        }
+
+        impl<'a> StoreTryMany<$type> for Storage<'a> {
+            type Stored<'b> = &'b [Stored<$type>] where Self: 'b;
+
+            fn store_try_many<'b, E, F, I>(&'b self, objects: I)
+                -> <F as Residual<Self::Stored<'_>>>::TryType
+            where I: IntoIterator<Item = E>,
+                  E: Try<Output = $type, Residual = F>,
+                  F: Residual<Self::Stored<'b>> {
+                self.$field.store_try_many(objects)
+            }
+        }
+    };
+}
+
+def_field_store!(Mod<'a>, mods);
+def_field_store!(Fn<'a>, fns);
+def_field_store!(FnArg<'a>, fn_args);
+def_field_store!(Stmt<'a>, stmts);
+def_field_store!(Expr<'a>, exprs);
+def_field_store!(BigInt, ints);
+
 /// A module definition.
-#[derive(Clone)]
-pub struct Module<'a> {
+#[derive(Copy, Clone)]
+pub struct Mod<'a> {
     /// The name of the module.
-    pub name: Symbol,
+    pub name: &'a str,
     /// Functions in the module.
-    pub funcs: arena::RefMany<'a, Function<'a>>,
+    pub funcs: &'a [Stored<Fn<'a>>],
     /// The source of the module.
-    pub source: ModuleSource<'a>,
+    pub source: ModSource<'a>,
 }
 
 /// The source of a module.
-#[derive(Clone)]
-pub enum ModuleSource<'a> {
+#[derive(Copy, Clone)]
+pub enum ModSource<'a> {
     /// Standard input.
     StdIn,
     /// A file at a certain path.
@@ -48,20 +108,29 @@ pub enum ModuleSource<'a> {
 }
 
 /// A function definition.
-#[derive(Clone)]
-pub struct Function<'a> {
+#[derive(Copy, Clone)]
+pub struct Fn<'a> {
     /// The name of the function.
-    pub name: Symbol,
+    pub name: &'a str,
     /// The arguments to the function.
-    pub args: arena::RefMany<'a, (Symbol, Type)>,
+    pub args: &'a [Stored<FnArg<'a>>],
     /// The return type of the function.
     pub rett: Type,
     /// The function body.
-    pub body: arena::Ref<'a, Expr<'a>>,
+    pub body: &'a Stored<Expr<'a>>,
+}
+
+/// An argument to a function.
+#[derive(Clone)]
+pub struct FnArg<'a> {
+    /// The name of the argument.
+    pub name: &'a str,
+    /// The type of the argument.
+    pub r#type: Type,
 }
 
 /// A type.
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Type {
     /// The underlying scalar type.
     pub scalar: ScalarType,
@@ -70,55 +139,55 @@ pub struct Type {
 }
 
 /// A scalar type.
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum ScalarType {
     /// An unsigned 64-bit integer.
     U64,
 }
 
 /// A statement.
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum Stmt<'a> {
     /// A variable declaration.
-    Let(Symbol, arena::Ref<'a, Expr<'a>>),
+    Let(&'a str, &'a Stored<Expr<'a>>),
 }
 
 /// An expression.
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum Expr<'a> {
-    Not(arena::Ref<'a, Expr<'a>>),
+    Not(&'a Stored<Expr<'a>>),
 
-    Add([arena::Ref<'a, Expr<'a>>; 2]),
-    Sub([arena::Ref<'a, Expr<'a>>; 2]),
-    Mul([arena::Ref<'a, Expr<'a>>; 2]),
-    Div([arena::Ref<'a, Expr<'a>>; 2]),
-    Rem([arena::Ref<'a, Expr<'a>>; 2]),
+    Add([&'a Stored<Expr<'a>>; 2]),
+    Sub([&'a Stored<Expr<'a>>; 2]),
+    Mul([&'a Stored<Expr<'a>>; 2]),
+    Div([&'a Stored<Expr<'a>>; 2]),
+    Rem([&'a Stored<Expr<'a>>; 2]),
 
-    And([arena::Ref<'a, Expr<'a>>; 2]),
-    IOr([arena::Ref<'a, Expr<'a>>; 2]),
-    XOr([arena::Ref<'a, Expr<'a>>; 2]),
-    ShL([arena::Ref<'a, Expr<'a>>; 2]),
-    ShR([arena::Ref<'a, Expr<'a>>; 2]),
+    And([&'a Stored<Expr<'a>>; 2]),
+    IOr([&'a Stored<Expr<'a>>; 2]),
+    XOr([&'a Stored<Expr<'a>>; 2]),
+    ShL([&'a Stored<Expr<'a>>; 2]),
+    ShR([&'a Stored<Expr<'a>>; 2]),
 
-    IsEq([arena::Ref<'a, Expr<'a>>; 2]),
-    IsNE([arena::Ref<'a, Expr<'a>>; 2]),
-    IsLT([arena::Ref<'a, Expr<'a>>; 2]),
-    IsLE([arena::Ref<'a, Expr<'a>>; 2]),
-    IsGT([arena::Ref<'a, Expr<'a>>; 2]),
-    IsGE([arena::Ref<'a, Expr<'a>>; 2]),
+    IsEq([&'a Stored<Expr<'a>>; 2]),
+    IsNE([&'a Stored<Expr<'a>>; 2]),
+    IsLT([&'a Stored<Expr<'a>>; 2]),
+    IsLE([&'a Stored<Expr<'a>>; 2]),
+    IsGT([&'a Stored<Expr<'a>>; 2]),
+    IsGE([&'a Stored<Expr<'a>>; 2]),
 
     // TODO: array operations
 
     /// An integer literal.
-    Int(BigInt),
+    Int(&'a Stored<BigInt>),
 
     /// A reference to a variable.
-    Var(Symbol),
+    Var(&'a str),
 
     /// A block expression.
     Blk {
-        stmts: arena::RefMany<'a, Stmt<'a>>,
-        rexpr: arena::Ref<'a, Expr<'a>>,
+        stmts: &'a [Stored<Stmt<'a>>],
+        rexpr: &'a Stored<Expr<'a>>,
     },
 }
 
