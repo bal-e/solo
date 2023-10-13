@@ -1,5 +1,4 @@
 use std::cell::Cell;
-use std::num::NonZeroU32;
 use std::ops::{ControlFlow, FromResidual, Residual, Try};
 
 use typed_arena::Arena;
@@ -15,7 +14,7 @@ pub struct ObjectStorage<T> {
     stack: Cell<Option<Vec<T>>>,
 
     /// The ID of the next-allocated object.
-    next_id: Cell<NonZeroU32>,
+    next_id: Cell<u32>,
 }
 
 impl<T> ObjectStorage<T> {
@@ -24,12 +23,15 @@ impl<T> ObjectStorage<T> {
         Self::default()
     }
 
+    /// The number of objects allocated.
+    pub fn num(&self) -> usize {
+        self.next_id.get() as usize
+    }
+
     /// Allocate a new ID number.
-    fn alloc_idnum(&self) -> NonZeroU32 {
+    fn alloc_idnum(&self) -> u32 {
         let idnum = self.next_id.get();
-        self.next_id.set(idnum
-            .checked_add(1)
-            .expect("Arena IDs overflowed!"));
+        self.next_id.set(idnum + 1);
         idnum
     }
 }
@@ -95,7 +97,7 @@ impl<T> Default for ObjectStorage<T> {
         Self {
             inner: Arena::new(),
             stack: Cell::new(Some(Vec::new())),
-            next_id: Cell::new(NonZeroU32::MIN),
+            next_id: Cell::new(0),
         }
     }
 }

@@ -1,7 +1,6 @@
 //! Data storage.
 
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
 use std::ops::{Deref, Residual, Try};
 
 mod object;
@@ -10,33 +9,27 @@ pub use object::ObjectStorage;
 /// The ID of an object in storage.
 pub struct ID<T> {
     /// The underlying ID number.
-    inner: NonZeroU32,
+    inner: u32,
 
     _elem: PhantomData<*const T>,
 }
 
-impl<T> From<ID<T>> for NonZeroU32 {
+impl<T> From<ID<T>> for u32 {
     fn from(value: ID<T>) -> Self {
         value.inner
     }
 }
 
-impl<T> From<ID<T>> for u32 {
-    fn from(value: ID<T>) -> Self {
-        value.inner.get()
-    }
-}
-
 impl<T> From<ID<T>> for usize {
     fn from(value: ID<T>) -> Self {
-        value.inner.get() as usize
+        value.inner as usize
     }
 }
 
 /// An object in storage.
 pub struct Stored<T> {
     /// The ID of the object.
-    idnum: NonZeroU32,
+    idnum: u32,
 
     /// The underlying object.
     inner: T,
