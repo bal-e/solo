@@ -9,7 +9,7 @@ use solo;
 #[command(author, version)]
 struct Args {
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Command,
 }
 
 #[derive(Debug, Subcommand)]
@@ -25,11 +25,8 @@ pub fn main() {
     let args = Args::parse();
 
     match args.command {
-        Some(Command::Compile { path }) => {
+        Command::Compile { path } => {
             cmd_compile(path)
-        },
-        None => {
-            println!("No command provided!");
         },
     }
 }
