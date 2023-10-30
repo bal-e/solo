@@ -6,6 +6,9 @@ use egg::{self, Id, Symbol};
 
 use num_bigint::BigInt;
 
+pub mod parse;
+pub use parse::Parser;
+
 /// An HIR expression node.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ExprNode {

@@ -76,6 +76,9 @@ fn cmd_compile<'a>(
         },
     };
 
-    let _ = ast;
-    println!("Success!");
+    // Convert the AST of each function into HIR.
+    for func in ast.funcs {
+        let hir = solo::hir::Parser::parse(&storage, &**func);
+        println!("HIR of '{}': {}", func.name, hir);
+    }
 }

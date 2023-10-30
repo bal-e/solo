@@ -127,6 +127,8 @@ pub struct FnArg<'a> {
     pub name: &'a str,
     /// The type of the argument.
     pub r#type: Type,
+    /// The expression representing the argument.
+    pub expr: &'a Stored<Expr<'a>>,
 }
 
 /// A type.

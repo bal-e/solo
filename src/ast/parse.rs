@@ -89,7 +89,7 @@ impl<'ast> Parser<'ast> {
         let expr = self.storage.store(Expr::Arg(name));
         self.scopes.last_mut().unwrap().insert(name, expr);
 
-        FnArg { name, r#type }
+        FnArg { name, r#type, expr }
     }
 
     /// Parse a type.
