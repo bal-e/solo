@@ -171,6 +171,11 @@ pub enum Expr<'a> {
     ShL([&'a Stored<Expr<'a>>; 2]),
     ShR([&'a Stored<Expr<'a>>; 2]),
 
+    Cat([&'a Stored<Expr<'a>>; 2]),
+    Ind([&'a Stored<Expr<'a>>; 2]),
+    Exp([&'a Stored<Expr<'a>>; 2]),
+    Red([&'a Stored<Expr<'a>>; 2]),
+
     IsEq([&'a Stored<Expr<'a>>; 2]),
     IsNE([&'a Stored<Expr<'a>>; 2]),
     IsLT([&'a Stored<Expr<'a>>; 2]),
@@ -178,7 +183,8 @@ pub enum Expr<'a> {
     IsGT([&'a Stored<Expr<'a>>; 2]),
     IsGE([&'a Stored<Expr<'a>>; 2]),
 
-    // TODO: array operations
+    Cond([&'a Stored<Expr<'a>>; 2]),
+    Else([&'a Stored<Expr<'a>>; 2]),
 
     /// An integer literal.
     Int(&'a Stored<BigInt>),
@@ -203,13 +209,25 @@ impl<'a> Expr<'a> {
     pub fn prec(&self) -> Prec {
         match self {
             Self::Not(..) => Prec::Max,
+
             Self::Add(..) | Self::Sub(..) => Prec::AddSub,
             Self::Mul(..) | Self::Div(..) | Self::Rem(..) => Prec::MulDiv,
+
             Self::And(..) | Self::IOr(..) | Self::XOr(..) => Prec::Bitwise,
             Self::ShL(..) | Self::ShR(..) => Prec::Shift,
-            Self::IsEq(..) | Self::IsNE(..) => Prec::Compare,
-            Self::IsLT(..) | Self::IsLE(..) => Prec::Compare,
-            Self::IsGT(..) | Self::IsGE(..) => Prec::Compare,
+
+            Self::Cat(..) => Prec::Concat,
+            Self::Ind(..) => Prec::Max,
+            Self::Exp(..) | Self::Red(..) => Prec::ExpRed,
+
+            Self::IsEq(..) | Self::IsNE(..)
+                | Self::IsLT(..) | Self::IsLE(..)
+                | Self::IsGT(..) | Self::IsGE(..)
+                => Prec::Compare,
+
+            Self::Cond(..) => Prec::Cond,
+            Self::Else(..) => Prec::Else,
+
             Self::Int(..) => Prec::Max,
             Self::Var(..) | Self::Arg(..) => Prec::Max,
             Self::Blk { .. } => Prec::Max,
@@ -223,22 +241,33 @@ impl<'a> Expr<'a> {
     pub fn code(&self) -> Option<&'static str> {
         Some(match self {
             Self::Not(..) => "~",
+
             Self::Add(..) => "+",
             Self::Sub(..) => "-",
             Self::Mul(..) => "*",
             Self::Div(..) => "/",
             Self::Rem(..) => "%",
+
             Self::And(..) => "&",
             Self::IOr(..) => "|",
             Self::XOr(..) => "^",
             Self::ShL(..) => "<<",
             Self::ShR(..) => ">>",
+
+            Self::Cat(..) => "~",
+            Self::Exp(..) => "<?",
+            Self::Red(..) => ">?",
+
             Self::IsEq(..) => "==",
             Self::IsNE(..) => "!=",
             Self::IsLT(..) => "<",
             Self::IsLE(..) => "<=",
             Self::IsGT(..) => ">",
             Self::IsGE(..) => ">=",
+
+            Self::Cond(..) => "?",
+            Self::Else(..) => ":",
+
             _ => return None,
         })
     }
@@ -249,6 +278,18 @@ impl<'a> Expr<'a> {
 pub enum Prec {
     /// The lowest possible precedence.
     Min,
+
+    /// The precedence of defaulting.
+    Else,
+
+    /// The precedence of conditioning.
+    Cond,
+
+    /// The precedence of array expansion and reduction.
+    ExpRed,
+
+    /// The precedence of array concatenation.
+    Concat,
 
     /// The precedence of comparison operators.
     Compare,
@@ -280,6 +321,10 @@ impl Prec {
     pub fn assoc(&self) -> Option<Assoc> {
         match self {
             Self::Min => None,
+            Self::Else => Some(Assoc::Right),
+            Self::Cond => None,
+            Self::ExpRed => None,
+            Self::Concat => Some(Assoc::Left),
             Self::Compare => None,
             Self::Shift => None,
             Self::AddSub => Some(Assoc::Left),
@@ -302,22 +347,15 @@ impl Prec {
             Ordering::Greater => Some(Assoc::Left),
         }
     }
-
-    fn is_arithmetic(&self) -> bool {
-        matches!(self, Self::AddSub | Self::MulDiv)
-    }
-
-    fn is_bitwise(&self) -> bool {
-        matches!(self, Self::Bitwise)
-    }
 }
 
 impl PartialOrd for Prec {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        let (lhs, rhs) = (*self, *other);
-        if lhs.is_arithmetic() && rhs.is_bitwise() { return None; }
-        if lhs.is_bitwise() && rhs.is_arithmetic() { return None; }
-        Some(Ord::cmp(&(lhs as usize), &(rhs as usize)))
+        match (*self, *other) {
+            (Self::AddSub | Self::MulDiv, Self::Bitwise) => None,
+            (Self::Bitwise, Self::AddSub | Self::MulDiv) => None,
+            (lhs, rhs) => Some(Ord::cmp(&(lhs as usize), &(rhs as usize))),
+        }
     }
 }
 

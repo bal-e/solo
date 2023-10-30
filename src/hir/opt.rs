@@ -48,9 +48,17 @@ impl CostFunction<ExprNode> for TimeCost {
             ExprNode::And(..) | ExprNode::IOr(..) | ExprNode::XOr(..) => 1,
             ExprNode::ShL(..) | ExprNode::ShR(..) => 3,
 
+            ExprNode::Cat(..) => 0,
+            ExprNode::Ind(..) => 1,
+            ExprNode::Exp(..) => 1,
+            ExprNode::Red(..) => 1,
+
             ExprNode::IsEq(..) | ExprNode::IsNE(..)
                 | ExprNode::IsLT(..) | ExprNode::IsLE(..)
                 | ExprNode::IsGT(..) | ExprNode::IsGE(..) => 3,
+
+            ExprNode::Cond(..) => 1,
+            ExprNode::Else(..) => 1,
 
             ExprNode::Int(..) => 1,
             ExprNode::Arg(..) => 0,

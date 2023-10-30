@@ -147,12 +147,19 @@ impl<'ast> Parser<'ast> {
                     Rule::op_shl => Expr::ShL([lhs, rhs]),
                     Rule::op_shr => Expr::ShR([lhs, rhs]),
 
+                    Rule::op_cat => Expr::Cat([lhs, rhs]),
+                    Rule::op_exp => Expr::Exp([lhs, rhs]),
+                    Rule::op_red => Expr::Red([lhs, rhs]),
+
                     Rule::op_iseq => Expr::IsEq([lhs, rhs]),
                     Rule::op_isne => Expr::IsNE([lhs, rhs]),
                     Rule::op_islt => Expr::IsLT([lhs, rhs]),
                     Rule::op_isle => Expr::IsLE([lhs, rhs]),
                     Rule::op_isgt => Expr::IsGT([lhs, rhs]),
                     Rule::op_isge => Expr::IsGE([lhs, rhs]),
+
+                    Rule::op_cond => Expr::Cond([lhs, rhs]),
+                    Rule::op_else => Expr::Else([lhs, rhs]),
 
                     _ => unreachable!(),
                 };
@@ -193,9 +200,13 @@ impl<'ast> Parser<'ast> {
                 Rule::op_mul | Rule::op_div | Rule::op_rem => Prec::MulDiv,
                 Rule::op_and | Rule::op_ior | Rule::op_xor => Prec::Bitwise,
                 Rule::op_shl | Rule::op_shr => Prec::Shift,
+                Rule::op_cat => Prec::Concat,
+                Rule::op_exp | Rule::op_red => Prec::ExpRed,
                 Rule::op_iseq | Rule::op_isne => Prec::Compare,
                 Rule::op_islt | Rule::op_isle => Prec::Compare,
                 Rule::op_isgt | Rule::op_isge => Prec::Compare,
+                Rule::op_cond => Prec::Cond,
+                Rule::op_else => Prec::Else,
                 _ => unreachable!(),
             }
         }
@@ -225,12 +236,18 @@ impl<'ast> Parser<'ast> {
                 },
                 Rule::atom => {
                     let expr = parser.parse_atom(pair)?;
-                    Ok(input.fold(expr, |expr, op| {
-                        let _expr = parser.storage.store(expr);
+                    input.try_fold(expr, |expr, op| {
+                        let expr = parser.storage.store(expr);
                         match op.as_rule() {
+                            Rule::op_ind => {
+                                let ind = op.into_inner().next().unwrap();
+                                let ind = parser.parse_expr(ind)?;
+                                let ind = parser.storage.store(ind);
+                                Ok(Expr::Ind([expr, ind]))
+                            },
                             _ => unreachable!(),
                         }
-                    }))
+                    })
                 },
                 _ => unreachable!(),
             }

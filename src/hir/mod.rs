@@ -29,6 +29,11 @@ pub enum ExprNode {
     ShL([Id; 2]),
     ShR([Id; 2]),
 
+    Cat([Id; 2]),
+    Ind([Id; 2]),
+    Exp([Id; 2]),
+    Red([Id; 2]),
+
     IsEq([Id; 2]),
     IsNE([Id; 2]),
     IsLT([Id; 2]),
@@ -36,7 +41,8 @@ pub enum ExprNode {
     IsGT([Id; 2]),
     IsGE([Id; 2]),
 
-    // TODO: array operations
+    Cond([Id; 2]),
+    Else([Id; 2]),
 
     Int(BigInt),
     Arg(Symbol),
@@ -59,13 +65,23 @@ impl Language for ExprNode {
     fn children(&self) -> &[Id] {
         match self {
             Self::Not(x) => slice::from_ref(x),
+
             Self::Add(x) | Self::Sub(x) | Self::Mul(x)
                 | Self::Div(x) | Self::Rem(x) => x,
+
             Self::And(x) | Self::IOr(x) | Self::XOr(x)
                 | Self::ShL(x) | Self::ShR(x) => x,
+
+            Self::Cat(x) => x,
+            Self::Ind(x) => x,
+            Self::Exp(x) | Self::Red(x) => x,
+
             Self::IsEq(x) | Self::IsNE(x)
                 | Self::IsLT(x) | Self::IsLE(x)
                 | Self::IsGT(x) | Self::IsGE(x) => x,
+
+            Self::Cond(x) | Self::Else(x) => x,
+
             Self::Int(..) | Self::Arg(..) => &[],
         }
     }
@@ -73,13 +89,23 @@ impl Language for ExprNode {
     fn children_mut(&mut self) -> &mut [Id] {
         match self {
             Self::Not(x) => slice::from_mut(x),
+
             Self::Add(x) | Self::Sub(x) | Self::Mul(x)
                 | Self::Div(x) | Self::Rem(x) => x,
+
             Self::And(x) | Self::IOr(x) | Self::XOr(x)
                 | Self::ShL(x) | Self::ShR(x) => x,
+
+            Self::Cat(x) => x,
+            Self::Ind(x) => x,
+            Self::Exp(x) | Self::Red(x) => x,
+
             Self::IsEq(x) | Self::IsNE(x)
                 | Self::IsLT(x) | Self::IsLE(x)
                 | Self::IsGT(x) | Self::IsGE(x) => x,
+
+            Self::Cond(x) | Self::Else(x) => x,
+
             Self::Int(..) | Self::Arg(..) => &mut [],
         }
     }
@@ -102,12 +128,20 @@ impl fmt::Display for ExprNode {
             Self::ShL(..) => "shl",
             Self::ShR(..) => "shr",
 
+            Self::Cat(..) => "cat",
+            Self::Ind(..) => "ind",
+            Self::Exp(..) => "exp",
+            Self::Red(..) => "red",
+
             Self::IsEq(..) => "iseq",
             Self::IsNE(..) => "isne",
             Self::IsLT(..) => "islt",
             Self::IsLE(..) => "isle",
             Self::IsGT(..) => "isgt",
             Self::IsGE(..) => "isge",
+
+            Self::Cond(..) => "cond",
+            Self::Else(..) => "else",
 
             Self::Int(v) => return fmt::Display::fmt(v, f),
             Self::Arg(n) => return write!(f, "${}", n),
@@ -134,12 +168,20 @@ impl egg::FromOp for ExprNode {
             ("shl", &[lhs, rhs]) => Self::ShL([lhs, rhs]),
             ("shr", &[lhs, rhs]) => Self::ShR([lhs, rhs]),
 
+            ("cat", &[lhs, rhs]) => Self::Cat([lhs, rhs]),
+            ("ind", &[lhs, rhs]) => Self::Ind([lhs, rhs]),
+            ("exp", &[lhs, rhs]) => Self::Exp([lhs, rhs]),
+            ("red", &[lhs, rhs]) => Self::Red([lhs, rhs]),
+
             ("iseq", &[lhs, rhs]) => Self::IsEq([lhs, rhs]),
             ("isne", &[lhs, rhs]) => Self::IsNE([lhs, rhs]),
             ("islt", &[lhs, rhs]) => Self::IsLT([lhs, rhs]),
             ("isle", &[lhs, rhs]) => Self::IsLE([lhs, rhs]),
             ("isgt", &[lhs, rhs]) => Self::IsGT([lhs, rhs]),
             ("isge", &[lhs, rhs]) => Self::IsGE([lhs, rhs]),
+
+            ("cond", &[lhs, rhs]) => Self::Cond([lhs, rhs]),
+            ("else", &[lhs, rhs]) => Self::Else([lhs, rhs]),
 
             (op, &[]) => {
                 if let Some(ident) = op.strip_prefix('$') {

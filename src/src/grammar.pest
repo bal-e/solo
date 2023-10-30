@@ -45,12 +45,16 @@ op_pre   = { op_not }
   op_not = { "~" }
 
 /// A suffix (postfix) operator.
-op_suf   = { !ANY ~ ANY }
+op_suf   = { op_ind }
+  /// An index operation.
+  op_ind = { "[" ~ expr ~ "]" }
 
 /// A binary (infix) operator.
 op_bin   = { op_add | op_sub | op_mul | op_div | op_rem
            | op_and | op_ior | op_xor | op_shl | op_shr
+	   | op_cat | op_exp | op_red
            | op_iseq | op_isne | op_isle | op_islt | op_isge | op_isgt
+	   | op_cond | op_else
            }
   /// Addition.
   op_add = { "+" }
@@ -74,6 +78,13 @@ op_bin   = { op_add | op_sub | op_mul | op_div | op_rem
   /// Binary right-shift.
   op_shr = { ">>" }
 
+  /// Concatenate.
+  op_cat = { "~" }
+  /// Expand to a mask.
+  op_exp = { "<?" }
+  /// Reduce by a mask.
+  op_red = { "?>" }
+
   /// Compare for equality.
   op_iseq = { "==" }
   /// Compare for inequality.
@@ -86,6 +97,11 @@ op_bin   = { op_add | op_sub | op_mul | op_div | op_rem
   op_isge = { ">=" }
   /// Compare for greater-than.
   op_isgt = { ">" }
+
+  /// Condition.
+  op_cond = { "?" }
+  /// Default.
+  op_else = { ":" }
 
 /// A name.
 name = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }

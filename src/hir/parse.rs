@@ -76,12 +76,20 @@ impl<'ast> Parser<'ast> {
             ast::Expr::ShL(x) => ExprNode::ShL(bin_parse(self, x)),
             ast::Expr::ShR(x) => ExprNode::ShR(bin_parse(self, x)),
 
+            ast::Expr::Cat(x) => ExprNode::Cat(bin_parse(self, x)),
+            ast::Expr::Ind(x) => ExprNode::Ind(bin_parse(self, x)),
+            ast::Expr::Exp(x) => ExprNode::Exp(bin_parse(self, x)),
+            ast::Expr::Red(x) => ExprNode::Red(bin_parse(self, x)),
+
             ast::Expr::IsEq(x) => ExprNode::IsEq(bin_parse(self, x)),
             ast::Expr::IsNE(x) => ExprNode::IsNE(bin_parse(self, x)),
             ast::Expr::IsLT(x) => ExprNode::IsLT(bin_parse(self, x)),
             ast::Expr::IsLE(x) => ExprNode::IsLE(bin_parse(self, x)),
             ast::Expr::IsGT(x) => ExprNode::IsGT(bin_parse(self, x)),
             ast::Expr::IsGE(x) => ExprNode::IsGE(bin_parse(self, x)),
+
+            ast::Expr::Cond(x) => ExprNode::Cond(bin_parse(self, x)),
+            ast::Expr::Else(x) => ExprNode::Else(bin_parse(self, x)),
 
             ast::Expr::Int(v) => ExprNode::Int((**v).clone()),
             ast::Expr::Var(_, e) => return self.bindings[&(*e as *const _)],
