@@ -4,6 +4,7 @@ use std::iter;
 
 use pest::{self, iterators::{Pair, Pairs}};
 
+use rustc_hash::FxHashMap;
 use thiserror::Error;
 
 use super::*;
@@ -15,35 +16,49 @@ use crate::src::Rule;
 pub struct Parser<'ast> {
     /// Storage for the AST.
     storage: &'ast Storage<'ast>,
+    /// The stack of scopes.
+    scopes: Vec<FxHashMap<&'ast str, &'ast Stored<Expr<'ast>>>>,
 }
 
 impl<'ast> Parser<'ast> {
     /// Construct a new [`Parser`].
     pub fn new(storage: &'ast Storage<'ast>) -> Self {
-        Self { storage }
+        Self { storage, scopes: Vec::new() }
     }
 
     /// Parse a module.
     pub fn parse_module(
-        &self,
+        &mut self,
         input: Pair<'_, Rule>,
         name: &str,
         source: ModSource<'ast>,
     ) -> Result<Mod<'ast>> {
         assert_eq!(Rule::module, input.as_rule());
+        let storage = self.storage;
 
-        let name = self.storage.store_ref(name);
+        // Begin module scope.
+        assert!(self.scopes.is_empty());
+        self.scopes.push(FxHashMap::default());
+
+        let name = storage.store_ref(name);
         let funcs = input.into_inner()
             .filter(|p| p.as_rule() == Rule::func)
             .map(|p| self.parse_func(p));
-        let funcs = self.storage.store_try_many(funcs)?;
+        let funcs = storage.store_try_many(funcs)?;
+
+        // End module scope.
+        self.scopes.pop();
 
         Ok(Mod { name, funcs, source })
     }
 
     /// Parse a function.
-    pub fn parse_func(&self, input: Pair<'_, Rule>) -> Result<Fn<'ast>> {
+    pub fn parse_func(&mut self, input: Pair<'_, Rule>) -> Result<Fn<'ast>> {
         assert_eq!(Rule::func, input.as_rule());
+        let storage = self.storage;
+
+        // Begin function scope.
+        self.scopes.push(FxHashMap::default());
 
         let mut pairs = input.into_inner().peekable();
         assert_eq!(Rule::func_kw, pairs.next().unwrap().as_rule());
@@ -51,27 +66,34 @@ impl<'ast> Parser<'ast> {
         let args = iter::from_fn(|| pairs
             .next_if(|p| p.as_rule() == Rule::func_arg)
             .map(|p| self.parse_func_arg(p)));
-        let args = self.storage.store_many(args);
+        let args = storage.store_many(args);
         let rett = self.parse_type(pairs.next().unwrap());
         let body = self.parse_expr_blk(pairs.next().unwrap())?;
-        let body = self.storage.store(body);
+        let body = storage.store(body);
+
+        // End function scope.
+        self.scopes.pop();
 
         Ok(Fn { name, args, rett, body })
     }
 
     /// Parse a function argument.
-    pub fn parse_func_arg(&self, input: Pair<'_, Rule>) -> FnArg<'ast> {
+    pub fn parse_func_arg(&mut self, input: Pair<'_, Rule>) -> FnArg<'ast> {
         assert_eq!(Rule::func_arg, input.as_rule());
 
         let mut pairs = input.into_inner();
         let name = self.parse_name(pairs.next().unwrap());
         let r#type = self.parse_type(pairs.next().unwrap());
 
+        // Register the argument as an expression and as a binding.
+        let expr = self.storage.store(Expr::Arg(name));
+        self.scopes.last_mut().unwrap().insert(name, expr);
+
         FnArg { name, r#type }
     }
 
     /// Parse a type.
-    pub fn parse_type(&self, input: Pair<'_, Rule>) -> Type {
+    pub fn parse_type(&mut self, input: Pair<'_, Rule>) -> Type {
         assert_eq!(Rule::r#type, input.as_rule());
 
         let mut pairs = input.into_inner().peekable();
@@ -84,15 +106,15 @@ impl<'ast> Parser<'ast> {
     }
 
     /// Parse a scalar type.
-    pub fn parse_type_scalar(&self, input: Pair<'_, Rule>) -> ScalarType {
+    pub fn parse_type_scalar(&mut self, input: Pair<'_, Rule>) -> ScalarType {
         assert_eq!(Rule::type_scalar, input.as_rule());
         ScalarType::U64
     }
 
     /// Parse an expression.
-    pub fn parse_expr(&self, input: Pair<'_, Rule>) -> Result<Expr<'ast>> {
+    pub fn parse_expr(&mut self, input: Pair<'_, Rule>) -> Result<Expr<'ast>> {
         fn parse_inner<'ast>(
-            parser: &Parser<'ast>,
+            parser: &mut Parser<'ast>,
             prev: Option<&Pair<'_, Rule>>,
             input: &mut iter::Peekable<Pairs<'_, Rule>>,
         ) -> Result<Expr<'ast>> {
@@ -183,9 +205,12 @@ impl<'ast> Parser<'ast> {
     }
 
     /// Parse an indivisible expression.
-    pub fn parse_expr_unit(&self, input: Pair<'_, Rule>) -> Result<Expr<'ast>> {
+    pub fn parse_expr_unit(
+        &mut self,
+        input: Pair<'_, Rule>,
+    ) -> Result<Expr<'ast>> {
         fn parse_pres<'ast>(
-            parser: &Parser<'ast>,
+            parser: &mut Parser<'ast>,
             mut input: Pairs<'_, Rule>,
         ) -> Result<Expr<'ast>> {
             let pair = input.next().unwrap();
@@ -216,12 +241,12 @@ impl<'ast> Parser<'ast> {
     }
 
     /// Parse an atomic expression.
-    pub fn parse_atom(&self, input: Pair<'_, Rule>) -> Result<Expr<'ast>> {
+    pub fn parse_atom(&mut self, input: Pair<'_, Rule>) -> Result<Expr<'ast>> {
         assert_eq!(Rule::atom, input.as_rule());
         let inner = input.into_inner().next().unwrap();
         Ok(match inner.as_rule() {
             Rule::expr_int => self.parse_expr_int(inner),
-            Rule::expr_var => self.parse_expr_var(inner),
+            Rule::expr_var => self.parse_expr_var(inner)?,
             Rule::expr_blk => self.parse_expr_blk(inner)?,
             Rule::expr => self.parse_expr(inner)?,
             _ => unreachable!(),
@@ -229,39 +254,56 @@ impl<'ast> Parser<'ast> {
     }
 
     /// Parse an integer literal expression.
-    pub fn parse_expr_int(&self, input: Pair<'_, Rule>) -> Expr<'ast> {
+    pub fn parse_expr_int(&mut self, input: Pair<'_, Rule>) -> Expr<'ast> {
         assert_eq!(Rule::expr_int, input.as_rule());
         let value: BigInt = input.as_str().parse().unwrap();
         Expr::Int(self.storage.store(value))
     }
 
     /// Parse a variable reference expression.
-    pub fn parse_expr_var(&self, input: Pair<'_, Rule>) -> Expr<'ast> {
+    pub fn parse_expr_var(
+        &mut self,
+        input: Pair<'_, Rule>,
+    ) -> Result<Expr<'ast>> {
         assert_eq!(Rule::expr_var, input.as_rule());
+
         let name = self.parse_name(input.into_inner().next().unwrap());
-        Expr::Var(name)
+
+        // Resolve the variable identifier within the innermost scope.
+        let expr = self.scopes.iter().rev()
+            .find_map(|s| s.get(name).copied())
+            .ok_or_else(|| Error::Unresolved(name.to_string()))?;
+
+        Ok(Expr::Var(name, expr))
     }
 
     /// Parse a block expression.
-    pub fn parse_expr_blk(&self, input: Pair<'_, Rule>) -> Result<Expr<'ast>> {
+    pub fn parse_expr_blk(
+        &mut self,
+        input: Pair<'_, Rule>,
+    ) -> Result<Expr<'ast>> {
         assert_eq!(Rule::expr_blk, input.as_rule());
+        let storage = self.storage;
+
+        // Begin block scope.
+        self.scopes.push(FxHashMap::default());
 
         let mut pairs = input.into_inner().peekable();
-        let mut error = None;
         let stmts = iter::from_fn(|| pairs
             .next_if(|p| p.as_rule() == Rule::stmt)
-            .and_then(|p| self.parse_stmt(p)
-                .map_or_else(|err| { error = Some(err); None }, Some)));
-        let stmts = self.storage.store_many(stmts);
-        if let Some(error) = error { return Err(error); }
+            .map(|p| self.parse_stmt(p)));
+        let stmts = storage.store_try_many(stmts)?;
         let rexpr = self.parse_expr(pairs.next().unwrap())?;
-        let rexpr = self.storage.store(rexpr);
+        let rexpr = storage.store(rexpr);
+
+        // End block scope.
+        self.scopes.pop();
 
         Ok(Expr::Blk { stmts, rexpr })
     }
 
     /// Parse a statement.
-    pub fn parse_stmt(&self, input: Pair<'_, Rule>) -> Result<Stmt<'ast>> {
+    pub fn parse_stmt(&mut self, input: Pair<'_, Rule>) -> Result<Stmt<'ast>> {
         assert_eq!(Rule::stmt, input.as_rule());
 
         let inner = input.into_inner().next().unwrap();
@@ -272,7 +314,10 @@ impl<'ast> Parser<'ast> {
     }
 
     /// Parse a let statement.
-    pub fn parse_stmt_let(&self, input: Pair<'_, Rule>) -> Result<Stmt<'ast>> {
+    pub fn parse_stmt_let(
+        &mut self,
+        input: Pair<'_, Rule>,
+    ) -> Result<Stmt<'ast>> {
         assert_eq!(Rule::stmt_let, input.as_rule());
 
         let mut pairs = input.into_inner();
@@ -280,11 +325,14 @@ impl<'ast> Parser<'ast> {
         let expr = self.parse_expr(pairs.next().unwrap())?;
         let expr = self.storage.store(expr);
 
+        // Register the new binding.
+        self.scopes.last_mut().unwrap().insert(name, expr);
+
         Ok(Stmt::Let(name, expr))
     }
 
     /// Parse a name.
-    pub fn parse_name(&self, input: Pair<'_, Rule>) -> &'ast str {
+    pub fn parse_name(&mut self, input: Pair<'_, Rule>) -> &'ast str {
         assert_eq!(Rule::name, input.as_rule());
         self.storage.store_ref(input.as_str())
     }
@@ -295,6 +343,9 @@ impl<'ast> Parser<'ast> {
 pub enum Error {
     #[error("There was a grammatical error in the source code: {0}")]
     Grammar(#[from] pest::error::Error<Rule>),
+
+    #[error("The variable '{0}' could not be found")]
+    Unresolved(String),
 }
 
 /// A parsing result.

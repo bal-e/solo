@@ -65,7 +65,7 @@ fn cmd_compile<'a>(
 
     // Parse the grammatical representation into an AST.
     let storage = solo::ast::Storage::new();
-    let parser = solo::ast::Parser::new(&storage);
+    let mut parser = solo::ast::Parser::new(&storage);
     let source = solo::ast::ModSource::File(&path);
     let ast = match parser.parse_module(src, name, source) {
         Ok(ast) => ast,

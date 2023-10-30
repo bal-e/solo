@@ -181,8 +181,11 @@ pub enum Expr<'a> {
     /// An integer literal.
     Int(&'a Stored<BigInt>),
 
-    /// A reference to a variable.
-    Var(&'a str),
+    /// A reference to a local variable.
+    Var(&'a str, &'a Stored<Expr<'a>>),
+
+    /// A reference to a function argument.
+    Arg(&'a str),
 
     /// A block expression.
     Blk {
@@ -206,7 +209,7 @@ impl<'a> Expr<'a> {
             Self::IsLT(..) | Self::IsLE(..) => Prec::Compare,
             Self::IsGT(..) | Self::IsGE(..) => Prec::Compare,
             Self::Int(..) => Prec::Max,
-            Self::Var(..) => Prec::Max,
+            Self::Var(..) | Self::Arg(..) => Prec::Max,
             Self::Blk { .. } => Prec::Max,
         }
     }
