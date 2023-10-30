@@ -2,9 +2,12 @@
 
 use core::{fmt, mem, slice};
 
-use egg::{self, Id, Symbol};
+use egg::{self, Id, Language, Symbol};
 
 use num_bigint::BigInt;
+
+pub mod opt;
+pub use opt::Optimizer;
 
 pub mod parse;
 pub use parse::Parser;
@@ -39,7 +42,7 @@ pub enum ExprNode {
     Arg(Symbol),
 }
 
-impl egg::Language for ExprNode {
+impl Language for ExprNode {
     #[inline(always)]
     fn matches(&self, other: &Self) -> bool {
         if mem::discriminant(self) != mem::discriminant(other) { return false };
