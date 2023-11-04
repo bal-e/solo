@@ -5,6 +5,8 @@ use core::num::NonZeroU32;
 
 use thiserror::Error;
 
+use crate::ast;
+
 /// Subtyping.
 pub trait Subtyping: Sized {
     /// Whether this is a subtype of another.
@@ -81,6 +83,17 @@ impl fmt::Display for MapType {
     }
 }
 
+impl From<ast::Type> for MapType {
+    fn from(value: ast::Type) -> Self {
+        Self {
+            scalar: value.scalar.into(),
+            option: value.option,
+            vector: value.vector,
+            stream: value.stream,
+        }
+    }
+}
+
 /// A scalar type.
 #[derive(Copy, Clone)]
 pub enum Type {
@@ -115,8 +128,8 @@ impl Subtyping for Type {
 
     fn merge_max(lhs: Self, rhs: Self) -> Result<Self, Error> {
         match (lhs, rhs) {
-            // If an 'Any' is seen, succeed immediately.
-            (Self::Any, _) | (_, Self::Any) => Ok(Self::Any),
+            // Ignore any 'Any'.
+            (Self::Any, x) | (x, Self::Any) => Ok(x),
             // Delegate to 'IntType' when appropriate.
             (Self::Int(l), Self::Int(r)) =>
                 IntType::merge_max(l, r).map(Self::Int),
@@ -141,6 +154,14 @@ impl fmt::Display for Type {
         match self {
             Self::Any => f.write_str("any"),
             Self::Int(i) => <IntType as fmt::Display>::fmt(&i, f),
+        }
+    }
+}
+
+impl From<ast::ScalarType> for Type {
+    fn from(value: ast::ScalarType) -> Self {
+        match value {
+            ast::ScalarType::Int(i) => Self::Int(i.into()),
         }
     }
 }
@@ -187,8 +208,8 @@ impl Subtyping for IntType {
 
     fn merge_max(lhs: Self, rhs: Self) -> Result<Self, Error> {
         match (lhs, rhs) {
-            // If an 'Any' is seen, succeed immediately.
-            (Self::Any, _) | (_, Self::Any) => Ok(Self::Any),
+            // Ignore any 'Any'.
+            (Self::Any, x) | (x, Self::Any) => Ok(x),
             // Delegate to 'U' when appropriate.
             (Self::U(l), Self::U(r)) if l == r => Ok(Self::U(l)),
             // Delegate to 'S' when appropriate.
@@ -220,6 +241,15 @@ impl fmt::Display for IntType {
             Self::Any => f.write_str("int"),
             Self::U(s) => write!(f, "u{s}"),
             Self::S(s) => write!(f, "s{s}"),
+        }
+    }
+}
+
+impl From<ast::IntType> for IntType {
+    fn from(value: ast::IntType) -> Self {
+        match value {
+            ast::IntType::U(s) => Self::U(s),
+            ast::IntType::S(s) => Self::S(s),
         }
     }
 }
