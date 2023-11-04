@@ -1,6 +1,7 @@
 //! An Abstract Syntax Tree (AST) for Solo.
 
 use std::cmp::{Ordering, PartialOrd};
+use std::num::NonZeroU32;
 use std::ops::{Residual, Try};
 use std::path::Path;
 
@@ -136,6 +137,10 @@ pub struct FnArg<'a> {
 pub struct Type {
     /// The underlying scalar type.
     pub scalar: ScalarType,
+    /// Whether the type has an option component.
+    pub option: bool,
+    /// Whether the type has a vector component.
+    pub vector: bool,
     /// Whether the type has a stream component.
     pub stream: bool,
 }
@@ -143,8 +148,17 @@ pub struct Type {
 /// A scalar type.
 #[derive(Copy, Clone)]
 pub enum ScalarType {
-    /// An unsigned 64-bit integer.
-    U64,
+    /// An integer type.
+    Int(IntType),
+}
+
+/// An integer type.
+#[derive(Copy, Clone)]
+pub enum IntType {
+    /// An unsigned integer type.
+    U(NonZeroU32),
+    /// A signed integer type.
+    S(NonZeroU32),
 }
 
 /// A statement.

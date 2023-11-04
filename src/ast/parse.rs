@@ -66,8 +66,8 @@ impl<'ast> Parser<'ast> {
         let args = iter::from_fn(|| pairs
             .next_if(|p| p.as_rule() == Rule::func_arg)
             .map(|p| self.parse_func_arg(p)));
-        let args = storage.store_many(args);
-        let rett = self.parse_type(pairs.next().unwrap());
+        let args = storage.store_try_many(args)?;
+        let rett = self.parse_type(pairs.next().unwrap())?;
         let body = self.parse_expr_blk(pairs.next().unwrap())?;
         let body = storage.store(body);
 
@@ -78,37 +78,76 @@ impl<'ast> Parser<'ast> {
     }
 
     /// Parse a function argument.
-    pub fn parse_func_arg(&mut self, input: Pair<'_, Rule>) -> FnArg<'ast> {
+    pub fn parse_func_arg(
+        &mut self,
+        input: Pair<'_, Rule>,
+    ) -> Result<FnArg<'ast>> {
         assert_eq!(Rule::func_arg, input.as_rule());
 
         let mut pairs = input.into_inner();
         let name = self.parse_name(pairs.next().unwrap());
-        let r#type = self.parse_type(pairs.next().unwrap());
+        let r#type = self.parse_type(pairs.next().unwrap())?;
 
         // Register the argument as an expression and as a binding.
         let expr = self.storage.store(Expr::Arg(name));
         self.scopes.last_mut().unwrap().insert(name, expr);
 
-        FnArg { name, r#type, expr }
+        Ok(FnArg { name, r#type, expr })
     }
 
     /// Parse a type.
-    pub fn parse_type(&mut self, input: Pair<'_, Rule>) -> Type {
+    pub fn parse_type(&mut self, input: Pair<'_, Rule>) -> Result<Type> {
         assert_eq!(Rule::r#type, input.as_rule());
 
         let mut pairs = input.into_inner().peekable();
         let stream = pairs
             .next_if(|p| p.as_rule() == Rule::type_stream)
             .is_some();
-        let scalar = self.parse_type_scalar(pairs.next().unwrap());
+        let vector = pairs
+            .next_if(|p| p.as_rule() == Rule::type_vector)
+            .is_some();
+        let option = pairs
+            .next_if(|p| p.as_rule() == Rule::type_option)
+            .is_some();
+        let scalar = self.parse_type_scalar(pairs.next().unwrap())?;
 
-        Type { scalar, stream }
+        Ok(Type { scalar, option, vector, stream })
     }
 
     /// Parse a scalar type.
-    pub fn parse_type_scalar(&mut self, input: Pair<'_, Rule>) -> ScalarType {
+    pub fn parse_type_scalar(
+        &mut self,
+        input: Pair<'_, Rule>,
+    ) -> Result<ScalarType> {
         assert_eq!(Rule::type_scalar, input.as_rule());
-        ScalarType::U64
+
+        match input.into_inner().next().unwrap() {
+            t if t.as_rule() == Rule::type_int =>
+                self.parse_type_int(t).map(ScalarType::Int),
+            _ => unreachable!(),
+        }
+    }
+
+    /// Parse an integer scalar type.
+    pub fn parse_type_int(&mut self, input: Pair<'_, Rule>) -> Result<IntType> {
+        assert_eq!(Rule::type_int, input.as_rule());
+
+        let (maker, size): (fn(_) -> _, _) = match input.as_str().split_at(1) {
+            ("u", x) => (IntType::U, x),
+            ("s", x) => (IntType::S, x),
+            _ => unreachable!(),
+        };
+
+        let size = size.parse::<NonZeroU32>().map_err(|err| {
+            let message = format!(
+                "The size component of '{}' is invalid: {}",
+                input.as_str(), err);
+            Error::Grammar(pest::error::Error::new_from_span(
+                pest::error::ErrorVariant::CustomError { message },
+                input.as_span()))
+        })?;
+
+        Ok((maker)(size))
     }
 
     /// Parse an expression.
@@ -179,7 +218,7 @@ impl<'ast> Parser<'ast> {
                 return Ok(assoc);
             }
 
-            // 'lhs' had to exist for incompatobility to occur.
+            // 'lhs' had to exist for incompatibility to occur.
             let lhs = lhs.unwrap();
 
             let message = format!(

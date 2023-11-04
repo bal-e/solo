@@ -14,11 +14,17 @@ func = { func_kw ~ name
   func_arg = { name ~ ":" ~ type }
 
 /// A type.
-type = { type_stream? ~ type_scalar }
+type = { type_stream? ~ type_vector? ~ type_option? ~ type_scalar }
   /// A type stream wrapper.
   type_stream = { "[]" }
+  /// A type vector wrapper.
+  type_vector = { "<>" }
+  /// A type option wrapper.
+  type_option = { "?" }
   /// A scalar type.
-  type_scalar = { "u64" }
+  type_scalar = { type_int }
+    /// An integer scalar type.
+    type_int = @{ ("u" | "s") ~ ASCII_DIGIT+ }
 
 /// A statement.
 stmt = { stmt_let }
