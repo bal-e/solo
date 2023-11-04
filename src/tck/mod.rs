@@ -1,7 +1,7 @@
 //! Type-checking for Solo.
 
 use thiserror::Error;
-use unionfind::VecUnionFind;
+use unionfind::VecUnionFindByRank;
 
 use crate::ast;
 use crate::storage::{ID, Stored};
@@ -29,7 +29,7 @@ pub struct Storage<'ast> {
     ///
     /// The elements / IDs here correspond to the IDs of the stored expressions
     /// whose types are being inferred.
-    tvars: VecUnionFind<usize>,
+    tvars: VecUnionFindByRank<usize>,
 }
 
 impl<'ast> Storage<'ast> {
@@ -38,7 +38,7 @@ impl<'ast> Storage<'ast> {
         Self {
             ast,
             types: Vec::new(),
-            tvars: VecUnionFind::new([]).unwrap(),
+            tvars: VecUnionFindByRank::new([]).unwrap(),
         }
     }
 
@@ -287,7 +287,24 @@ impl<'ast> Storage<'ast> {
         lhs: ID<ast::Expr<'ast>>,
         rhs: ID<ast::Expr<'ast>>,
     ) -> Result<Type> {
-        todo!()
+        let [lhs, rhs] = [lhs, rhs].map(usize::from);
+
+        // Resolve both nodes all the way in.
+        let l = self.tvars.find_shorten(&lhs).unwrap();
+        let r = self.tvars.find_shorten(&rhs).unwrap();
+
+        // Merge the underlying type values.
+        let [lt, rt] = [l, r].map(|x| self.types[x].unwrap().scalar);
+        let xt = Type::merge_max(lt, rt)?;
+
+        // Update the union-find to combine the two.
+        self.tvars.union_by_rank(&l, &r).unwrap();
+
+        // Update the types to use the merged result.
+        self.types[l].as_mut().unwrap().scalar = xt;
+        self.types[r].as_mut().unwrap().scalar = xt;
+
+        Ok(xt)
     }
 
     /// Infer the type of an expression from a supertype.
@@ -296,15 +313,28 @@ impl<'ast> Storage<'ast> {
         expr: ID<ast::Expr<'ast>>,
         sup: Type,
     ) -> Result<MapType> {
-        todo!()
+        let expr = usize::from(expr);
+
+        // Resolve the expression node.
+        let x = self.tvars.find_shorten(&expr).unwrap();
+
+        // Infer the underlying type value.
+        let mut xt = self.types[x].unwrap();
+        xt.scalar = xt.scalar.infer_min(sup)?;
+
+        // Update the type to use the merged result.
+        self.types[x] = Some(xt);
+
+        Ok(xt)
     }
 
     /// Get the type of an expression.
     ///
     /// The function containing the expression must have already been resolved
     /// using [`Storage::tck_fn()`].
-    pub fn get_expr_type(&self, expr: ID<ast::Expr<'ast>>) -> MapType {
-        self.types[usize::from(expr)].unwrap()
+    pub fn get_expr_type(&mut self, expr: ID<ast::Expr<'ast>>) -> MapType {
+        let expr = self.tvars.find_shorten(&usize::from(expr)).unwrap();
+        self.types[expr].unwrap()
     }
 }
 
