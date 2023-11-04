@@ -7,6 +7,7 @@ mod object;
 pub use object::ObjectStorage;
 
 /// The ID of an object in storage.
+#[derive(Copy, Clone)]
 pub struct ID<T> {
     /// The underlying ID number.
     inner: u32,
