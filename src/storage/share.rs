@@ -36,7 +36,7 @@ impl<C: Collection<T>, T: ?Sized> Collection<T> for Share<C> {
     type ID = <C as Collection<T>>::ID;
 
     fn get(&self, id: Self::ID) -> T
-    where T: Sized + Copy {
+    where T: Sized + Clone {
         let inner = self.inner.take()
             .expect("A shared collection tried to access itself!");
         let result = inner.get(id);
@@ -99,7 +99,7 @@ impl<C: Collection<U>, T, U: ?Sized> Collection<U> for ShareStack<'_, C, T> {
     type ID = <C as Collection<T>>::ID;
 
     fn get(&self, id: Self::ID) -> T
-    where T: Sized + Copy {
+    where T: Sized + Clone {
         self.share.get(id)
     }
 }

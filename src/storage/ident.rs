@@ -91,18 +91,26 @@ impl<T: ?Sized> SeriesID32<T> {
     pub fn new(beg: ID32<T>, len: u32) -> Self {
         Self { beg, len }
     }
+
+    /// Get the beginning and length of this series.
+    pub fn into_beg_len(self) -> (ID32<T>, u32) {
+        (self.beg, self.len)
+    }
+
+    /// Construct a new [`SeriesID32`] from the given range.
+    pub fn from_range(range: Range<ID32<T>>) -> Self {
+        let [beg, end] = [range.start, range.end].map(u32::from);
+        let len = end.checked_sub(beg).unwrap_or(0);
+        Self { beg: range.start, len }
+    }
 }
 
 impl<T: ?Sized> SeriesIdentifier for SeriesID32<T> {
     type Single = ID32<T>;
     type Object = T;
-}
 
-impl<T: ?Sized> From<Range<ID32<T>>> for SeriesID32<T> {
-    fn from(value: Range<ID32<T>>) -> Self {
-        let [beg, end] = [value.start, value.end].map(u32::from);
-        let len = end.checked_sub(beg).unwrap_or(0);
-        Self { beg: value.start, len }
+    fn into_range(self) -> Range<Self::Single> {
+        self.into()
     }
 }
 

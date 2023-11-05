@@ -2,10 +2,13 @@
 
 use core::fmt::Debug;
 use core::hash::Hash;
-use core::ops::{Residual, Try};
+use core::ops::{Range, Residual, Try};
 
 pub mod ident;
 pub mod share;
+
+pub mod ints;
+pub mod syms;
 
 mod vec;
 pub use vec::VecCollector;
@@ -15,16 +18,19 @@ mod slice;
 /// An identifier for an object in a collection.
 pub trait Identifier: Copy + Eq + Ord + Hash + Debug {
     /// The type of objects being identified.
-    type Object: Object;
+    type Object;
 }
 
 /// An identifier for a series of objects in a collection.
 pub trait SeriesIdentifier: Copy + Eq + Ord + Hash + Debug {
     /// The type of objects being identified.
-    type Object: Object;
+    type Object;
 
     /// The type of identifiers for single elements in the series.
     type Single: Identifier<Object = Self::Object>;
+
+    /// Destructure this series into a [`Range`].
+    fn into_range(self) -> Range<Self::Single>;
 }
 
 /// Objects that can be collected.
@@ -35,18 +41,18 @@ pub trait SeriesIdentifier: Copy + Eq + Ord + Hash + Debug {
 /// Types implementing [`Object`] can be broken down into a fixed number of
 /// atomic object types; [`Object::Collection`] maps a [`Collector`] onto each
 /// of these atomic objects.
-pub trait Object {
+pub trait Object<C: Collector> {
     /// The collection type of this object.
     ///
     /// This is a type providing access to a sequence of objects of this type,
     /// using the given [`Collector`] as backing storage.
-    type Collection<C: Collector>: Collection<Self>;
+    type Collection: Collection<Self>;
 }
 
 /// An [`Object`] that cannot be subdivided.
 ///
 /// Objects implementing this trait use [`Collector`]-provided storage.
-pub trait AtomicObject: Object + Sized {}
+pub trait AtomicObject: Sized {}
 
 /// A collector providing a data source.
 pub trait Collector {
@@ -60,17 +66,15 @@ pub trait Collection<T: ?Sized> {
     type ID: Identifier;
 
     /// Retrieve an object given its ID.
-    ///
-    /// This function will panic if the given ID could not be found.
-    fn get(&self, id: Self::ID) -> T
-    where T: Sized + Copy;
+    unsafe fn get(&self, id: Self::ID) -> T
+    where T: Sized + Clone;
 }
 
 impl<C: Collection<T>, T: ?Sized> Collection<T> for &C {
     type ID = <C as Collection<T>>::ID;
 
-    fn get(&self, id: Self::ID) -> T
-    where T: Sized + Copy {
+    unsafe fn get(&self, id: Self::ID) -> T
+    where T: Sized + Clone {
         <C as Collection<T>>::get(**self, id)
     }
 }
@@ -78,8 +82,8 @@ impl<C: Collection<T>, T: ?Sized> Collection<T> for &C {
 impl<C: Collection<T>, T: ?Sized> Collection<T> for &mut C {
     type ID = <C as Collection<T>>::ID;
 
-    fn get(&self, id: Self::ID) -> T
-    where T: Sized + Copy {
+    unsafe fn get(&self, id: Self::ID) -> T
+    where T: Sized + Clone {
         <C as Collection<T>>::get(**self, id)
     }
 }
@@ -87,19 +91,17 @@ impl<C: Collection<T>, T: ?Sized> Collection<T> for &mut C {
 /// A [`Collection`] where objects can be referenced.
 pub trait CollectionRef<T: ?Sized>: Collection<T> {
     /// Retrieve an object by reference given its ID.
-    ///
-    /// This function will panic if the given ID could not be found.
-    fn get_ref(&self, id: Self::ID) -> &T;
+    unsafe fn get_ref(&self, id: Self::ID) -> &T;
 }
 
 impl<C: CollectionRef<T>, T: ?Sized> CollectionRef<T> for &C {
-    fn get_ref(&self, id: Self::ID) -> &T {
+    unsafe fn get_ref(&self, id: Self::ID) -> &T {
         <C as CollectionRef<T>>::get_ref(**self, id)
     }
 }
 
 impl<C: CollectionRef<T>, T: ?Sized> CollectionRef<T> for &mut C {
-    fn get_ref(&self, id: Self::ID) -> &T {
+    unsafe fn get_ref(&self, id: Self::ID) -> &T {
         <C as CollectionRef<T>>::get_ref(**self, id)
     }
 }
@@ -113,6 +115,18 @@ pub trait CollectionInsert<T: Sized>: Collection<T> {
 impl<C: CollectionInsert<T>, T> CollectionInsert<T> for &mut C {
     fn insert(&mut self, object: T) -> Self::ID {
         <C as CollectionInsert<T>>::insert(**self, object)
+    }
+}
+
+/// A [`Collection`] where individual objects can be inserted by reference.
+pub trait CollectionInsertRef<T: ?Sized>: Collection<T> {
+    /// Insert an object and get its new ID.
+    fn insert_ref(&mut self, object: &T) -> Self::ID;
+}
+
+impl<C: CollectionInsertRef<T>, T> CollectionInsertRef<T> for &mut C {
+    fn insert_ref(&mut self, object: &T) -> Self::ID {
+        <C as CollectionInsertRef<T>>::insert_ref(**self, object)
     }
 }
 
@@ -134,19 +148,17 @@ impl<C: SeriesCollection<T>, T: ?Sized> SeriesCollection<T> for &mut C {
 pub trait SeriesCollectionRef<T: Sized>: SeriesCollection<T>
 where Self: CollectionRef<T> {
     /// Retrieve a series of objects by reference given its ID.
-    ///
-    /// This function will panic if the given ID could not be found.
-    fn get_series_ref(&self, id: Self::SeriesID) -> &[T];
+    unsafe fn get_series_ref(&self, id: Self::SeriesID) -> &[T];
 }
 
 impl<C: SeriesCollectionRef<T>, T> SeriesCollectionRef<T> for &C {
-    fn get_series_ref(&self, id: Self::SeriesID) -> &[T] {
+    unsafe fn get_series_ref(&self, id: Self::SeriesID) -> &[T] {
         <C as SeriesCollectionRef<T>>::get_series_ref(**self, id)
     }
 }
 
 impl<C: SeriesCollectionRef<T>, T> SeriesCollectionRef<T> for &mut C {
-    fn get_series_ref(&self, id: Self::SeriesID) -> &[T] {
+    unsafe fn get_series_ref(&self, id: Self::SeriesID) -> &[T] {
         <C as SeriesCollectionRef<T>>::get_series_ref(**self, id)
     }
 }

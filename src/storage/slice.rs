@@ -8,7 +8,7 @@ impl<T> Collection<T> for [T] {
     type ID = ident::ID32<T>;
 
     fn get(&self, id: Self::ID) -> T
-    where T: Sized + Copy {
+    where T: Sized + Clone {
         self.get(usize::from(id)).unwrap().clone()
     }
 }
