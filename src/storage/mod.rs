@@ -1,89 +1,186 @@
 //! Data storage.
 
-use std::marker::PhantomData;
-use std::ops::{Deref, Residual, Try};
+use core::fmt::Debug;
+use core::hash::Hash;
+use core::ops::{Residual, Try};
 
-mod object;
-pub use object::ObjectStorage;
+pub mod ident;
+pub mod share;
 
-/// The ID of an object in storage.
-#[derive(Copy, Clone)]
-pub struct ID<T> {
-    /// The underlying ID number.
-    inner: u32,
+mod vec;
+pub use vec::VecCollector;
 
-    _elem: PhantomData<*const T>,
+mod slice;
+
+/// An identifier for an object in a collection.
+pub trait Identifier: Copy + Eq + Ord + Hash + Debug {
+    /// The type of objects being identified.
+    type Object: Object;
 }
 
-impl<T> From<ID<T>> for u32 {
-    fn from(value: ID<T>) -> Self {
-        value.inner
+/// An identifier for a series of objects in a collection.
+pub trait SeriesIdentifier: Copy + Eq + Ord + Hash + Debug {
+    /// The type of objects being identified.
+    type Object: Object;
+
+    /// The type of identifiers for single elements in the series.
+    type Single: Identifier<Object = Self::Object>;
+}
+
+/// Objects that can be collected.
+///
+/// This trait indicates that values of this type can be stored in collections.
+/// It is provided automatically for
+///
+/// Types implementing [`Object`] can be broken down into a fixed number of
+/// atomic object types; [`Object::Collection`] maps a [`Collector`] onto each
+/// of these atomic objects.
+pub trait Object {
+    /// The collection type of this object.
+    ///
+    /// This is a type providing access to a sequence of objects of this type,
+    /// using the given [`Collector`] as backing storage.
+    type Collection<C: Collector>: Collection<Self>;
+}
+
+/// An [`Object`] that cannot be subdivided.
+///
+/// Objects implementing this trait use [`Collector`]-provided storage.
+pub trait AtomicObject: Object + Sized {}
+
+/// A collector providing a data source.
+pub trait Collector {
+    /// A collection for the given atomic object type.
+    type Collection<T: AtomicObject>: Collection<T>;
+}
+
+/// A collection of objects.
+pub trait Collection<T: ?Sized> {
+    /// The type of identifiers to objects in the collection.
+    type ID: Identifier;
+
+    /// Retrieve an object given its ID.
+    ///
+    /// This function will panic if the given ID could not be found.
+    fn get(&self, id: Self::ID) -> T
+    where T: Sized + Copy;
+}
+
+impl<C: Collection<T>, T: ?Sized> Collection<T> for &C {
+    type ID = <C as Collection<T>>::ID;
+
+    fn get(&self, id: Self::ID) -> T
+    where T: Sized + Copy {
+        <C as Collection<T>>::get(**self, id)
     }
 }
 
-impl<T> From<ID<T>> for usize {
-    fn from(value: ID<T>) -> Self {
-        value.inner as usize
+impl<C: Collection<T>, T: ?Sized> Collection<T> for &mut C {
+    type ID = <C as Collection<T>>::ID;
+
+    fn get(&self, id: Self::ID) -> T
+    where T: Sized + Copy {
+        <C as Collection<T>>::get(**self, id)
     }
 }
 
-/// An object in storage.
-pub struct Stored<T> {
-    /// The ID of the object.
-    idnum: u32,
-
-    /// The underlying object.
-    inner: T,
+/// A [`Collection`] where objects can be referenced.
+pub trait CollectionRef<T: ?Sized>: Collection<T> {
+    /// Retrieve an object by reference given its ID.
+    ///
+    /// This function will panic if the given ID could not be found.
+    fn get_ref(&self, id: Self::ID) -> &T;
 }
 
-impl<T> Stored<T> {
-    /// Get the ID of this object.
-    pub fn id(&self) -> ID<T> {
-        ID { inner: self.idnum, _elem: PhantomData }
+impl<C: CollectionRef<T>, T: ?Sized> CollectionRef<T> for &C {
+    fn get_ref(&self, id: Self::ID) -> &T {
+        <C as CollectionRef<T>>::get_ref(**self, id)
     }
 }
 
-impl<T> Deref for Stored<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+impl<C: CollectionRef<T>, T: ?Sized> CollectionRef<T> for &mut C {
+    fn get_ref(&self, id: Self::ID) -> &T {
+        <C as CollectionRef<T>>::get_ref(**self, id)
     }
 }
 
-/// The ability to store objects.
-pub trait Store<T: ?Sized> {
-    type Stored<'a> where Self: 'a;
-
-    /// Store an object.
-    fn store(&self, object: T) -> Self::Stored<'_>;
+/// A [`Collection`] where individual objects can be inserted.
+pub trait CollectionInsert<T: Sized>: Collection<T> {
+    /// Insert an object and get its new ID.
+    fn insert(&mut self, object: T) -> Self::ID;
 }
 
-/// The ability to store objects from references.
-pub trait StoreRef<T: ?Sized> {
-    type Stored<'a> where Self: 'a;
-
-    /// Store an object from a reference.
-    fn store_ref(&self, object: &T) -> Self::Stored<'_>;
+impl<C: CollectionInsert<T>, T> CollectionInsert<T> for &mut C {
+    fn insert(&mut self, object: T) -> Self::ID {
+        <C as CollectionInsert<T>>::insert(**self, object)
+    }
 }
 
-/// The ability to store series of objects.
-pub trait StoreMany<T: ?Sized> {
-    type Stored<'a> where Self: 'a;
+/// A [`Collection`] which can hold series of objects.
+pub trait SeriesCollection<T: Sized>: Collection<T> {
+    /// The type of identifiers to series of objects.
+    type SeriesID: SeriesIdentifier<Single = Self::ID>;
+}
 
-    /// Store a series of objects.
-    fn store_many<I>(&self, objects: I) -> Self::Stored<'_>
+impl<C: SeriesCollection<T>, T: ?Sized> SeriesCollection<T> for &C {
+    type SeriesID = <C as SeriesCollection<T>>::SeriesID;
+}
+
+impl<C: SeriesCollection<T>, T: ?Sized> SeriesCollection<T> for &mut C {
+    type SeriesID = <C as SeriesCollection<T>>::SeriesID;
+}
+
+/// A [`Collection`] where series of objects can be referenced.
+pub trait SeriesCollectionRef<T: Sized>: SeriesCollection<T>
+where Self: CollectionRef<T> {
+    /// Retrieve a series of objects by reference given its ID.
+    ///
+    /// This function will panic if the given ID could not be found.
+    fn get_series_ref(&self, id: Self::SeriesID) -> &[T];
+}
+
+impl<C: SeriesCollectionRef<T>, T> SeriesCollectionRef<T> for &C {
+    fn get_series_ref(&self, id: Self::SeriesID) -> &[T] {
+        <C as SeriesCollectionRef<T>>::get_series_ref(**self, id)
+    }
+}
+
+impl<C: SeriesCollectionRef<T>, T> SeriesCollectionRef<T> for &mut C {
+    fn get_series_ref(&self, id: Self::SeriesID) -> &[T] {
+        <C as SeriesCollectionRef<T>>::get_series_ref(**self, id)
+    }
+}
+
+/// A [`Collection`] where series of objects can be added.
+pub trait CollectionExtend<T: Sized>: SeriesCollection<T>
+where Self: CollectionInsert<T> {
+    /// Insert a series of objects and get their IDs.
+    fn extend<I>(&mut self, series: I) -> Self::SeriesID
     where I: IntoIterator<Item = T>;
-}
 
-/// The ability to store fallible series of objects.
-pub trait StoreTryMany<T: ?Sized> {
-    type Stored<'a> where Self: 'a;
-
-    /// Store a fallible series of objects.
-    fn store_try_many<'a, E, F, I>(&'a self, objects: I)
-        -> <F as Residual<Self::Stored<'_>>>::TryType
+    /// Insert a fallible series of objects and get their IDs.
+    fn try_extend<E, F, I>(
+        &mut self,
+        series: I,
+    ) -> <F as Residual<Self::SeriesID>>::TryType
     where I: IntoIterator<Item = E>,
           E: Try<Output = T, Residual = F>,
-          F: Residual<Self::Stored<'a>>;
+          F: Residual<Self::SeriesID>;
+}
+
+impl<C: CollectionExtend<T>, T> CollectionExtend<T> for &mut C {
+    fn extend<I>(&mut self, series: I) -> Self::SeriesID
+    where I: IntoIterator<Item = T> {
+        <C as CollectionExtend<T>>::extend(**self, series)
+    }
+
+    fn try_extend<E, F, I>(
+        &mut self,
+        series: I,
+    ) -> <F as Residual<Self::SeriesID>>::TryType
+    where I: IntoIterator<Item = E>,
+          E: Try<Output = T, Residual = F>,
+          F: Residual<Self::SeriesID> {
+        <C as CollectionExtend<T>>::try_extend(**self, series)
+    }
 }
