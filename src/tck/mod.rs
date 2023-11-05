@@ -92,7 +92,6 @@ impl<'ast> Storage<'ast> {
         expr: &'ast Stored<ast::Expr<'ast>>,
         sup: Type,
     ) -> Result<MapType> {
-        println!("tck_expr({}, {})", usize::from(expr.id()), sup);
         let r#type = match **expr {
             ast::Expr::Not(x) => {
                 // Resolve the sub-expression.
@@ -328,8 +327,6 @@ impl<'ast> Storage<'ast> {
                 self.tck_expr(rexpr, sup)?
             },
         };
-
-        println!("tck_expr({}) -> {}", usize::from(expr.id()), r#type);
 
         // Save the result for later and return.
         self.types[usize::from(expr.id())] = Some(r#type);

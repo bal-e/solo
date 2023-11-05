@@ -88,6 +88,11 @@ fn cmd_compile<'a>(
         }
     }
 
+    // Print the MIR for every function.
+    for func in r#mod.funcs {
+        solo::mir::consume(&ast, &mut tck, func);
+    }
+
     // Convert the AST of each function into HIR.
     for func in r#mod.funcs {
         let mut hir = solo::hir::Parser::parse(&ast, &**func);
