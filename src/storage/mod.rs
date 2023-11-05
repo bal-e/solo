@@ -4,6 +4,9 @@ use core::fmt::Debug;
 use core::hash::Hash;
 use core::ops::{Range, Residual, Try};
 
+mod fwd;
+pub use fwd::*;
+
 pub mod ident;
 pub mod share;
 
