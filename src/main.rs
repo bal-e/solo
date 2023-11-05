@@ -64,11 +64,11 @@ fn cmd_compile<'a>(
     };
 
     // Parse the grammatical representation into an AST.
-    let storage = solo::ast::Storage::new();
-    let mut parser = solo::ast::Parser::new(&storage);
+    let ast = solo::ast::Storage::new();
+    let mut parser = solo::ast::Parser::new(&ast);
     let source = solo::ast::ModSource::File(&path);
-    let ast = match parser.parse_module(src, name, source) {
-        Ok(ast) => ast,
+    let r#mod = match parser.parse_module(src, name, source) {
+        Ok(r#mod) => r#mod,
         Err(err) => {
             eprintln!("Error: could not compile '{}'", name);
             eprintln!("Could not parse '{}': {}", path.display(), err);
@@ -76,11 +76,21 @@ fn cmd_compile<'a>(
         },
     };
 
+    let mut tck = solo::tck::Storage::new(&ast);
     let mut optimizer = solo::hir::Optimizer::default();
 
+    // Type-check every function.
+    for func in r#mod.funcs {
+        if let Err(err) = tck.tck_fn(&func) {
+            eprintln!("Error: could not type-check '{}'", name);
+            eprintln!("'{}' contained an error: {}", func.name, err);
+            std::process::exit(1);
+        }
+    }
+
     // Convert the AST of each function into HIR.
-    for func in ast.funcs {
-        let mut hir = solo::hir::Parser::parse(&storage, &**func);
+    for func in r#mod.funcs {
+        let mut hir = solo::hir::Parser::parse(&ast, &**func);
         println!("HIR of '{}': {}", func.name, hir);
 
         optimizer.optimize(&mut hir);

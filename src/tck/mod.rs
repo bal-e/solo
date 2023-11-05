@@ -1,5 +1,7 @@
 //! Type-checking for Solo.
 
+use core::num::NonZeroU32;
+
 use thiserror::Error;
 use unionfind::VecUnionFindByRank;
 
@@ -90,6 +92,7 @@ impl<'ast> Storage<'ast> {
         expr: &'ast Stored<ast::Expr<'ast>>,
         sup: Type,
     ) -> Result<MapType> {
+        println!("tck_expr({}, {})", usize::from(expr.id()), sup);
         let r#type = match **expr {
             ast::Expr::Not(x) => {
                 // Resolve the sub-expression.
@@ -114,7 +117,7 @@ impl<'ast> Storage<'ast> {
                 MapType {
                     scalar: res,
                     option: lhs.option || rhs.option,
-                    vector: lhs.vector || rhs.vector,
+                    vector: VectorSize::merge_max(lhs.vector, rhs.vector)?,
                     stream: lhs.stream || rhs.stream,
                 }
             },
@@ -127,11 +130,16 @@ impl<'ast> Storage<'ast> {
                 // Equate the sub-expressions' types.
                 let res = self.merge_exprs(x[0].id(), x[1].id())?;
 
+                // Calculate the new vector size.
+                let vector_size =
+                    lhs.vector.get().unwrap_or(1) +
+                    rhs.vector.get().unwrap_or(1);
+
                 // Incorporate any mapping components.
                 MapType {
                     scalar: res,
                     option: lhs.option || rhs.option,
-                    vector: true,
+                    vector: Some(vector_size).into(),
                     stream: lhs.stream || rhs.stream,
                 }
             },
@@ -142,13 +150,15 @@ impl<'ast> Storage<'ast> {
                 let rhs = self.tck_expr(x[1], Type::Int(IntType::Any))?;
 
                 // Ensure that the left-hand side is an array.
-                if !lhs.vector { return Err(logic::Error::Subtype.into()); }
+                if !lhs.vector.exists() {
+                    return Err(logic::Error::Subtype.into());
+                }
 
                 // Incorporate any mapping components.
                 MapType {
                     scalar: lhs.scalar,
                     option: lhs.option || rhs.option,
-                    vector: false,
+                    vector: rhs.vector,
                     stream: lhs.stream || rhs.stream,
                 }
             },
@@ -165,7 +175,7 @@ impl<'ast> Storage<'ast> {
                 MapType {
                     scalar: lhs.scalar,
                     option: true,
-                    vector: lhs.vector || rhs.vector,
+                    vector: VectorSize::merge_max(lhs.vector, rhs.vector)?,
                     stream: true,
                 }
             },
@@ -188,7 +198,7 @@ impl<'ast> Storage<'ast> {
                 MapType {
                     scalar: lhs.scalar,
                     option: lhs.option,
-                    vector: lhs.vector || rhs.vector,
+                    vector: VectorSize::merge_max(lhs.vector, rhs.vector)?,
                     stream: true,
                 }
             },
@@ -202,13 +212,13 @@ impl<'ast> Storage<'ast> {
                 let rhs = self.tck_expr(x[1], sup)?;
 
                 // Equate the sub-expressions' types.
-                let res = self.merge_exprs(x[0].id(), x[1].id())?;
+                self.merge_exprs(x[0].id(), x[1].id())?;
 
                 // Incorporate any mapping components.
                 MapType {
-                    scalar: res,
+                    scalar: Type::Int(IntType::U(NonZeroU32::MIN)),
                     option: lhs.option || rhs.option,
-                    vector: lhs.vector || rhs.vector,
+                    vector: VectorSize::merge_max(lhs.vector, rhs.vector)?,
                     stream: lhs.stream || rhs.stream,
                 }
             }
@@ -222,7 +232,7 @@ impl<'ast> Storage<'ast> {
                 MapType {
                     scalar: rhs.scalar,
                     option: true,
-                    vector: lhs.vector || rhs.vector,
+                    vector: VectorSize::merge_max(lhs.vector, rhs.vector)?,
                     stream: lhs.stream || rhs.stream,
                 }
             },
@@ -242,8 +252,51 @@ impl<'ast> Storage<'ast> {
                 MapType {
                     scalar: res,
                     option: rhs.option,
-                    vector: lhs.vector || rhs.vector,
+                    vector: VectorSize::merge_max(lhs.vector, rhs.vector)?,
                     stream: lhs.stream || rhs.stream,
+                }
+            },
+
+            ast::Expr::BitCast(t, x) => {
+                // Resolve the sub-expression.
+                let x = self.tck_expr(x, Type::Any)?;
+                let t = MapType::from(t);
+
+                // Ensure that the output type fits the supertype.
+                if !t.scalar.is_subtype_of(&sup) {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                // Ensure that the subexpression is not optional.
+                if x.option { return Err(logic::Error::Subtype.into()); }
+
+                // Ensure that the target type is not optional.
+                if t.option { return Err(logic::Error::Subtype.into()); }
+
+                // Ensure that both the source and the target types have the
+                // same disposition to streams.
+                if x.stream != t.stream {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                t
+            },
+
+            ast::Expr::MapCast(t, x) => {
+                // Resolve the sub-expression.
+                let x = self.tck_expr(x, Type::Any)?;
+                let t = Type::from(t);
+
+                // Ensure that the output type fits the supertype.
+                if !t.is_subtype_of(&sup) {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                MapType {
+                    scalar: t,
+                    option: x.option,
+                    vector: x.vector,
+                    stream: x.stream,
                 }
             },
 
@@ -256,10 +309,10 @@ impl<'ast> Storage<'ast> {
                 MapType {
                     scalar: Type::Int(IntType::Any),
                     option: false,
-                    vector: false,
+                    vector: None.into(),
                     stream: false,
                 }
-            }
+            },
 
             ast::Expr::Var(_, x) => self.infer_expr(x.id(), sup)?,
 
@@ -275,6 +328,8 @@ impl<'ast> Storage<'ast> {
                 self.tck_expr(rexpr, sup)?
             },
         };
+
+        println!("tck_expr({}) -> {}", usize::from(expr.id()), r#type);
 
         // Save the result for later and return.
         self.types[usize::from(expr.id())] = Some(r#type);

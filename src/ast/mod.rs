@@ -140,7 +140,7 @@ pub struct Type {
     /// Whether the type has an option component.
     pub option: bool,
     /// Whether the type has a vector component.
-    pub vector: bool,
+    pub vector: Option<u32>,
     /// Whether the type has a stream component.
     pub stream: bool,
 }
@@ -200,6 +200,11 @@ pub enum Expr<'a> {
     Cond([&'a Stored<Expr<'a>>; 2]),
     Else([&'a Stored<Expr<'a>>; 2]),
 
+    /// A value-wide bitcast expression.
+    BitCast(Type, &'a Stored<Expr<'a>>),
+    /// A per-element cast expression.
+    MapCast(ScalarType, &'a Stored<Expr<'a>>),
+
     /// An integer literal.
     Int(&'a Stored<BigInt>),
 
@@ -241,6 +246,9 @@ impl<'a> Expr<'a> {
 
             Self::Cond(..) => Prec::Cond,
             Self::Else(..) => Prec::Else,
+
+            Self::BitCast(..) => Prec::Max,
+            Self::MapCast(..) => Prec::Max,
 
             Self::Int(..) => Prec::Max,
             Self::Var(..) | Self::Arg(..) => Prec::Max,

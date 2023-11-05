@@ -99,13 +99,23 @@ impl<'ast> Parser<'ast> {
     pub fn parse_type(&mut self, input: Pair<'_, Rule>) -> Result<Type> {
         assert_eq!(Rule::r#type, input.as_rule());
 
+        let input_info = (input.as_str(), input.as_span());
         let mut pairs = input.into_inner().peekable();
         let stream = pairs
             .next_if(|p| p.as_rule() == Rule::type_stream)
             .is_some();
         let vector = pairs
             .next_if(|p| p.as_rule() == Rule::type_vector)
-            .is_some();
+            .map(|p| p.into_inner().next().unwrap().as_str())
+            .map(|p| p.parse::<u32>().map_err(|err| {
+                let message = format!(
+                    "The vector size component of '{}' is invalid: {}",
+                    input_info.0, err);
+                Error::Grammar(pest::error::Error::new_from_span(
+                    pest::error::ErrorVariant::CustomError { message },
+                    input_info.1))
+            }))
+            .transpose()?;
         let option = pairs
             .next_if(|p| p.as_rule() == Rule::type_option)
             .is_some();
@@ -302,6 +312,7 @@ impl<'ast> Parser<'ast> {
         let inner = input.into_inner().next().unwrap();
         Ok(match inner.as_rule() {
             Rule::expr_int => self.parse_expr_int(inner),
+            Rule::expr_cst => self.parse_expr_cst(inner)?,
             Rule::expr_var => self.parse_expr_var(inner)?,
             Rule::expr_blk => self.parse_expr_blk(inner)?,
             Rule::expr => self.parse_expr(inner)?,
@@ -314,6 +325,24 @@ impl<'ast> Parser<'ast> {
         assert_eq!(Rule::expr_int, input.as_rule());
         let value: BigInt = input.as_str().parse().unwrap();
         Expr::Int(self.storage.store(value))
+    }
+
+    /// Parse a cast expression.
+    pub fn parse_expr_cst(
+        &mut self,
+        input: Pair<'_, Rule>,
+    ) -> Result<Expr<'ast>> {
+        assert_eq!(Rule::expr_cst, input.as_rule());
+
+        let mut pairs = input.into_inner();
+        let r#type = self.parse_type(pairs.next().unwrap())?;
+        let expr = self.parse_atom(pairs.next().unwrap())?;
+        let expr = self.storage.store(expr);
+        if r#type.stream || r#type.vector.is_some() || r#type.option {
+            Ok(Expr::BitCast(r#type, expr))
+        } else {
+            Ok(Expr::MapCast(r#type.scalar, expr))
+        }
     }
 
     /// Parse a variable reference expression.

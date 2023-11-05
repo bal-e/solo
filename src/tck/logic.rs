@@ -30,7 +30,7 @@ pub struct MapType {
     /// Whether elements are optional.
     pub option: bool,
     /// Whether elements are vectors (of options).
-    pub vector: bool,
+    pub vector: VectorSize,
     /// Whether elements are streams (of vectors and/or of options),
     pub stream: bool,
 }
@@ -43,7 +43,7 @@ impl Subtyping for MapType {
 
         self.scalar.is_subtype_of(&sup.scalar)
             && (!self.option || sup.option)
-            && (!self.vector || sup.vector)
+            && self.vector.is_subtype_of(&sup.vector)
             && (!self.stream || sup.stream)
     }
 
@@ -51,7 +51,7 @@ impl Subtyping for MapType {
         Ok(Self {
             scalar: Type::merge_min(lhs.scalar, rhs.scalar)?,
             option: lhs.option && rhs.option,
-            vector: lhs.vector && rhs.vector,
+            vector: VectorSize::merge_min(lhs.vector, rhs.vector)?,
             stream: lhs.stream && rhs.stream,
         })
     }
@@ -60,7 +60,7 @@ impl Subtyping for MapType {
         Ok(Self {
             scalar: Type::merge_max(lhs.scalar, rhs.scalar)?,
             option: lhs.option || rhs.option,
-            vector: lhs.vector || rhs.vector,
+            vector: VectorSize::merge_max(lhs.vector, rhs.vector)?,
             stream: lhs.stream || rhs.stream,
         })
     }
@@ -77,7 +77,7 @@ impl Subtyping for MapType {
 impl fmt::Display for MapType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.stream { f.write_str("[]")?; }
-        if self.vector { f.write_str("()")?; }
+        if let Some(size) = self.vector.get() { write!(f, "<{size}>")?; }
         if self.option { f.write_str("?")?; }
         <Type as fmt::Display>::fmt(&self.scalar, f)
     }
@@ -88,7 +88,7 @@ impl From<ast::Type> for MapType {
         Self {
             scalar: value.scalar.into(),
             option: value.option,
-            vector: value.vector,
+            vector: value.vector.into(),
             stream: value.stream,
         }
     }
@@ -251,6 +251,62 @@ impl From<ast::IntType> for IntType {
             ast::IntType::U(s) => Self::U(s),
             ast::IntType::S(s) => Self::S(s),
         }
+    }
+}
+
+/// The size of a vector type, if any.
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct VectorSize {
+    inner: Option<u32>,
+}
+
+impl VectorSize {
+    /// Whether a vector component exists.
+    pub fn exists(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    /// Get the underlying [`Option`].
+    pub fn get(self) -> Option<u32> {
+        self.inner
+    }
+}
+
+impl Subtyping for VectorSize {
+    fn is_subtype_of(&self, sup: &Self) -> bool {
+        !self.exists() || sup.exists()
+    }
+
+    fn merge_min(lhs: Self, rhs: Self) -> Result<Self, Error> {
+        Ok(match (lhs.inner, rhs.inner) {
+            (Some(l), Some(r)) if l == r => Some(l),
+            (_, None) | (None, _) => None,
+            _ => return Err(Error::Merge),
+        }.into())
+    }
+
+    fn merge_max(lhs: Self, rhs: Self) -> Result<Self, Error> {
+        Ok(match (lhs.inner, rhs.inner) {
+            (Some(l), Some(r)) if l == r => Some(l),
+            (Some(x), None) | (None, Some(x)) => Some(x),
+            (None, None) => None,
+            _ => return Err(Error::Merge),
+        }.into())
+    }
+
+    fn infer_min(self, sup: Self) -> Result<Self, Error> {
+        Ok(match (self.inner, sup.inner) {
+            (Some(l), Some(r)) if l == r => Some(l),
+            (None, Some(x)) => Some(x),
+            (None, None) => None,
+            _ => return Err(Error::Subtype),
+        }.into())
+    }
+}
+
+impl From<Option<u32>> for VectorSize {
+    fn from(value: Option<u32>) -> Self {
+        Self { inner: value }
     }
 }
 

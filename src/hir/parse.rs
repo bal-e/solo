@@ -91,6 +91,9 @@ impl<'ast> Parser<'ast> {
             ast::Expr::Cond(x) => ExprNode::Cond(bin_parse(self, x)),
             ast::Expr::Else(x) => ExprNode::Else(bin_parse(self, x)),
 
+            ast::Expr::BitCast(..) => todo!(),
+            ast::Expr::MapCast(..) => todo!(),
+
             ast::Expr::Int(v) => ExprNode::Int((**v).clone()),
             ast::Expr::Var(_, e) => return self.bindings[&(*e as *const _)],
             ast::Expr::Arg(n) => ExprNode::Arg(egg::Symbol::new(n)),

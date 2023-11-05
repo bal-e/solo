@@ -18,7 +18,9 @@ type = { type_stream? ~ type_vector? ~ type_option? ~ type_scalar }
   /// A type stream wrapper.
   type_stream = { "[]" }
   /// A type vector wrapper.
-  type_vector = { "<>" }
+  type_vector = { "<" ~ type_vector_size ~ ">" }
+    /// The size of a vector type.
+    type_vector_size = @{ ASCII_DIGIT+ }
   /// A type option wrapper.
   type_option = { "?" }
   /// A scalar type.
@@ -37,9 +39,11 @@ expr = { expr_unit ~ (op_bin ~ expr_unit)* }
   expr_unit = { op_pre* ~ atom ~ op_suf* }
 
 /// An atomic expression.
-atom = { expr_int | expr_var | expr_blk | "(" ~ expr ~ ")" }
+atom = { expr_int | expr_cst | expr_var | expr_blk | "(" ~ expr ~ ")" }
   /// An integer literal expression.
   expr_int = @{ ASCII_DIGIT+ }
+  /// A cast expression.
+  expr_cst = { "(" ~ type ~ ")" ~ atom  }
   /// A variable reference expression.
   expr_var = { name }
   /// A block expression.
