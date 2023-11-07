@@ -43,9 +43,10 @@ impl<'s, T: 's> SeqStorage<'s, T> for &'s [T] {
 }
 
 impl<'s, T: Clone + 's> SeqStorageGet<'s, T> for &'s [T] {
-    type Seq<'t> = iter::Cloned<slice::Iter<'t, T>> where Self: 't, T: 't;
+    type Seq<'t> = iter::Cloned<slice::Iter<'t, T>> where 's: 't;
 
-    unsafe fn get_seq(&self, id: Self::SeqID) -> Self::Seq<'_> {
+    unsafe fn get_seq<'t>(&'t self, id: Self::SeqID) -> Self::Seq<'t>
+    where 's: 't {
         self.get_unchecked(Range::<usize>::from(id)).iter().cloned()
     }
 }

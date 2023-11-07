@@ -7,7 +7,7 @@ use core::ops::{Range, Residual, Try};
 
 // Utilities
 pub mod ident;
-//pub mod share;
+pub mod share;
 pub mod slice;
 pub mod vec;
 
@@ -192,26 +192,29 @@ where S: SeqStorage<'s, T>, T: 's {
 pub trait SeqStorageGet<'s, T: 's>: SeqStorage<'s, T>
 where Self: StorageGet<'s, T> {
     /// The item sequence.
-    type Seq<'t>: Iterator<Item = T> + 't where Self: 't, T: 't;
+    type Seq<'t>: Iterator<Item = T> + 't where 's: 't;
 
     /// Retrieve a series of objects given its ID.
-    unsafe fn get_seq(&self, id: Self::SeqID) -> Self::Seq<'_>;
+    unsafe fn get_seq<'t>(&'t self, id: Self::SeqID) -> Self::Seq<'t>
+    where 's: 't;
 }
 
 impl<'s, S, T> SeqStorageGet<'s, T> for &'s S
 where S: SeqStorageGet<'s, T>, T: 's {
-    type Seq<'t> = S::Seq<'t> where Self: 't, T: 't;
+    type Seq<'t> = S::Seq<'t> where 's: 't;
 
-    unsafe fn get_seq(&self, id: Self::SeqID) -> Self::Seq<'_> {
+    unsafe fn get_seq<'t>(&'t self, id: Self::SeqID) -> Self::Seq<'t>
+    where 's: 't {
         (**self).get_seq(id)
     }
 }
 
 impl<'s, S, T> SeqStorageGet<'s, T> for &'s mut S
 where S: SeqStorageGet<'s, T>, T: 's {
-    type Seq<'t> = S::Seq<'t> where Self: 't, T: 't;
+    type Seq<'t> = S::Seq<'t> where 's: 't;
 
-    unsafe fn get_seq(&self, id: Self::SeqID) -> Self::Seq<'_> {
+    unsafe fn get_seq<'t>(&'t self, id: Self::SeqID) -> Self::Seq<'t>
+    where 's: 't {
         (**self).get_seq(id)
     }
 }
