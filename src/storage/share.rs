@@ -1,12 +1,23 @@
 //! Safely sharing collections thread-locally.
 
 use core::cell::{self, RefCell};
+use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ops::{ControlFlow, FromResidual, Residual, Try};
 
 use crate::util::MutCell;
 
 use super::*;
+
+/// A [`Disposition`] for using [`Share`].
+#[derive(Default)]
+pub struct ShareDisposition<D: Disposition> {
+    inner: D,
+}
+
+impl<'a, D: Disposition<'a>> Disposition<'a> for ShareDisposition<D> {
+    type
+}
 
 /// A sharing wrapper around a [`Storage`].
 pub struct Share<S> {
