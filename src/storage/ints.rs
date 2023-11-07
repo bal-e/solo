@@ -7,7 +7,6 @@ use core::ops::{Deref, DerefMut};
 use num_bigint::{BigInt, Sign};
 
 use super::*;
-use super::ident::*;
 
 /// An integer.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -70,7 +69,7 @@ pub enum IntegerID {
     ///
     /// The sign of the integer is encoded in the length.
     Extern {
-        beg: ID32<u32>,
+        beg: ident::ID32<u32>,
         len: NonZeroI32,
     }
 }
@@ -91,8 +90,8 @@ impl fmt::Display for IntegerID {
                 }
 
                 let len = len.get().unsigned_abs();
-                let id = SeqID32::try_from((*beg, len)).unwrap();
-                <SeqID32<_> as fmt::Display>::fmt(&id, f)
+                let id = ident::SeqID32::try_from((*beg, len)).unwrap();
+                <ident::SeqID32<_> as fmt::Display>::fmt(&id, f)
             },
         }
     }
@@ -127,9 +126,9 @@ where D::SeqStorage<u32>: SeqStorageGetTmp<u32> {
                     Sign::Minus
                 }, len.get().unsigned_abs());
 
-                let beg = IDLen::from(usize::try_from(beg).unwrap());
+                let beg = ident::IDLen::from(usize::try_from(beg).unwrap());
                 let len = usize::try_from(len).unwrap();
-                let digits_id = SeqIDLen::try_from((beg, len)).unwrap();
+                let digits_id = ident::SeqIDLen::try_from((beg, len)).unwrap();
                 unsafe { self.inner.get_seq_tmp(digits_id, |digits| {
                     BigInt::from_slice(sign, digits)
                 }) }.into()
@@ -149,7 +148,7 @@ where D::SeqStorage<u32>: SeqStoragePut<u32> {
         // Add the digits to the collection.
         let id = self.inner.put_seq(object.inner.iter_u32_digits());
         let (beg, len) = id.into();
-        let beg = ID32::try_from(usize::from(beg)).unwrap();
+        let beg = ident::ID32::try_from(usize::from(beg)).unwrap();
         let len = NonZeroI32::try_from(i32::try_from(len).unwrap()).unwrap();
 
         // Prepare the resulting ID.
