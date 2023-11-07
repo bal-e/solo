@@ -8,7 +8,7 @@ use core::ops::{Range, Residual, Try};
 // Utilities
 pub mod ident;
 //pub mod share;
-//pub mod slice;
+pub mod slice;
 pub mod vec;
 
 // Specialized objects
