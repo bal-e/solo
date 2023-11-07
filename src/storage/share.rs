@@ -59,9 +59,21 @@ impl<S: StoragePut<T>, T> StoragePut<T> for Share<S> {
     }
 }
 
+impl<S: StoragePut<T>, T> StoragePut<T> for &Share<S> {
+    fn put(&mut self, object: T) -> Self::ID {
+        self.inner.borrow_mut().put(object)
+    }
+}
+
 impl<S: StoragePutTmp<T>, T: ?Sized> StoragePutTmp<T> for Share<S> {
     fn put_tmp(&mut self, object: &T) -> Self::ID {
         self.inner.get_mut().put_tmp(object)
+    }
+}
+
+impl<S: StoragePutTmp<T>, T: ?Sized> StoragePutTmp<T> for &Share<S> {
+    fn put_tmp(&mut self, object: &T) -> Self::ID {
+        self.inner.borrow_mut().put_tmp(object)
     }
 }
 
@@ -105,9 +117,17 @@ impl<S: SeqStoragePut<T>, T> SeqStoragePut<T> for Share<S> {
     }
 }
 
+// impl<S: SeqStorage<T>, T> !SeqStoragePut<T> for &Share<S>;
+
 impl<S: SeqStoragePutTmp<T>, T> SeqStoragePutTmp<T> for Share<S> {
     fn put_seq_tmp(&mut self, series: &[T]) -> Self::SeqID {
         self.inner.get_mut().put_seq_tmp(series)
+    }
+}
+
+impl<S: SeqStoragePutTmp<T>, T> SeqStoragePutTmp<T> for &Share<S> {
+    fn put_seq_tmp(&mut self, series: &[T]) -> Self::SeqID {
+        self.inner.borrow_mut().put_seq_tmp(series)
     }
 }
 
@@ -155,7 +175,7 @@ where S: StoragePut<U> {
     }
 }
 
-impl<S: Storage<T>, T, U> StoragePutTmp<U> for ShareStack<'_, S, T>
+impl<S: Storage<T>, T, U: ?Sized> StoragePutTmp<U> for ShareStack<'_, S, T>
 where S: StoragePutTmp<U> {
     fn put_tmp(&mut self, object: &U) -> Self::ID {
         self.share.inner.borrow_mut().put_tmp(object)
