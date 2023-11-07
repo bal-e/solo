@@ -9,7 +9,7 @@ use core::ops::{Range, Residual, Try};
 pub mod ident;
 //pub mod share;
 //pub mod slice;
-//pub mod vec;
+pub mod vec;
 
 // Specialized objects
 pub mod ints;
