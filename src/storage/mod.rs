@@ -13,7 +13,7 @@ pub mod ident;
 
 // Specialized objects
 pub mod ints;
-//pub mod syms;
+pub mod syms;
 
 use self::ident::{IDLen, SeqIDLen};
 

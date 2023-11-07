@@ -43,7 +43,6 @@ impl Deref for Symbol {
 }
 
 impl Object for Symbol {
-    type Storage<D: Disposition> = Symbols<D>;
     type ID = SymbolID;
 }
 
@@ -92,7 +91,7 @@ impl Ident for SymbolID {
 }
 
 /// A collection of [`Symbol`]s.
-pub struct Symbols<D: Disposition> {
+pub struct Symbols<'s, D: Disposition<'s>> {
     /// A hash table for deduplicating strings.
     hashes: HashTable<SymbolID>,
 
@@ -100,14 +99,14 @@ pub struct Symbols<D: Disposition> {
     contents: D::SeqStorage<u8>,
 }
 
-impl<D: Disposition> Symbols<D> {
+impl<'s, D: Disposition<'s>> Symbols<'s, D> {
     /// Retrieved an interned symbol temporarily.
     unsafe fn get_sym_tmp<R, F>(
         contents: &D::SeqStorage<u8>,
         id: SymbolID,
         func: F,
     ) -> R
-    where D::SeqStorage<u8>: SeqStorageGetTmp<u8>,
+    where D::SeqStorage<u8>: SeqStorageGetTmp<'s, u8>,
           F: FnOnce(&Symbol) -> R {
         let range = Range::<u32>::from(id.inner);
         let range = [range.start, range.end]
@@ -129,7 +128,7 @@ impl<D: Disposition> Symbols<D> {
     }
 }
 
-impl<D: Disposition> Default for Symbols<D>
+impl<'s, D: Disposition<'s>> Default for Symbols<'s, D>
 where D::SeqStorage<u8>: Default {
     fn default() -> Self {
         Self {
@@ -139,21 +138,21 @@ where D::SeqStorage<u8>: Default {
     }
 }
 
-impl<D: Disposition> Storage<Symbol> for Symbols<D> {
+impl<'s, D: Disposition<'s>> Storage<'s, Symbol> for Symbols<'s, D> {
     type ID = SymbolID;
     type Disposition = D;
 }
 
-impl<D: Disposition> StorageGetTmp<Symbol> for Symbols<D>
-where D::SeqStorage<u8>: SeqStorageGetTmp<u8> {
+impl<'s, D: Disposition<'s>> StorageGetTmp<'s, Symbol> for Symbols<'s, D>
+where D::SeqStorage<u8>: SeqStorageGetTmp<'s, u8> {
     unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
     where F: FnOnce(&Symbol) -> R {
         Self::get_sym_tmp(&self.contents, id, func)
     }
 }
 
-impl<D: Disposition> StorageGetRef<Symbol> for Symbols<D>
-where D::SeqStorage<u8>: SeqStorageGetRef<u8> {
+impl<'s, D: Disposition<'s>> StorageGetRef<'s, Symbol> for Symbols<'s, D>
+where D::SeqStorage<u8>: SeqStorageGetRef<'s, u8> {
     unsafe fn get_ref(&self, id: Self::ID) -> &Symbol {
         use core::str::from_utf8_unchecked;
 
@@ -170,8 +169,8 @@ where D::SeqStorage<u8>: SeqStorageGetRef<u8> {
     }
 }
 
-impl<D: Disposition> StoragePutTmp<Symbol> for Symbols<D>
-where D::SeqStorage<u8>: SeqStorageGetTmp<u8> + SeqStoragePutTmp<u8> {
+impl<'s, D: Disposition<'s>> StoragePutTmp<'s, Symbol> for Symbols<'s, D>
+where D::SeqStorage<u8>: SeqStorageGetTmp<'s, u8> + SeqStoragePutTmp<'s, u8> {
     fn put_tmp(&mut self, object: &Symbol) -> Self::ID {
         /// Convenience function for hashing a [`Symbol`].
         fn hasher(input: &Symbol) -> u64 {
