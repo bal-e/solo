@@ -8,7 +8,7 @@ use core::ops::{Range, Residual, Try};
 // Utilities
 pub mod ident;
 pub mod share;
-pub mod slice;
+//pub mod slice;
 pub mod vec;
 
 // Specialized objects
@@ -16,6 +16,12 @@ pub mod ints;
 pub mod syms;
 
 use self::ident::{IDLen, SeqIDLen};
+
+/// The ID of an object.
+pub type ID<T> = <T as Object>::ID;
+
+/// The ID of a sequence of objects.
+pub type SeqID<T> = <T as SeqObject>::SeqID;
 
 /// An object that can be stored.
 ///
@@ -30,8 +36,7 @@ pub trait Object {
     /// This is parametric over the [`Disposition`] used, which affects the
     /// operations available on the storage.
     type Storage<D: Disposition>
-        : ?Sized
-        + Storage<Self, ID = Self::ID, Disposition = D>;
+        : Storage<Self, ID = Self::ID, Disposition = D>;
 }
 
 /// An object of which sequences can be stored.
@@ -305,12 +310,10 @@ impl<S: SeqStoragePutTmp<T>, T> SeqStoragePutTmp<T> for &mut S {
 pub trait Disposition {
     /// Backing storage for individual objects.
     type Storage<T>
-        : ?Sized
-        + Storage<T, ID = IDLen<T>, Disposition = Self>;
+        : Storage<T, ID = IDLen<T>, Disposition = Self>;
 
     /// Backing storage for sequences of objects.
     type SeqStorage<T>
-        : ?Sized
-        + Storage<T, ID = IDLen<T>, Disposition = Self>
+        : Storage<T, ID = IDLen<T>, Disposition = Self>
         + SeqStorage<T, SeqID = SeqIDLen<T>>;
 }
