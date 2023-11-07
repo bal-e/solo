@@ -2,61 +2,100 @@
 
 use core::iter;
 use core::ops::{ControlFlow, FromResidual, Range, Residual, Try};
+use core::slice;
 
 use super::*;
 
-impl<T> Collection<T> for Vec<T> {
-    type ID = ident::ID32<T>;
+/// A [`Disposition`] to use [`Vec`]s.
+pub struct VecDisposition;
 
-    fn get(&self, id: Self::ID) -> T
-    where T: Sized + Clone {
-        self.get(usize::from(id)).unwrap().clone()
+impl Disposition for VecDisposition {
+    type Storage<T> = Vec<T>;
+    type SeqStorage<T> = Vec<T>;
+}
+
+impl<T> Storage<T> for Vec<T> {
+    type ID = ident::IDLen<T>;
+    type Disposition = VecDisposition;
+}
+
+impl<T: Clone> StorageGet<T> for Vec<T> {
+    unsafe fn get(&self, id: Self::ID) -> T {
+        self.get_unchecked(usize::from(id)).clone()
     }
 }
 
-impl<T> CollectionRef<T> for Vec<T> {
-    fn get_ref(&self, id: Self::ID) -> &T {
-        self.get(usize::from(id)).unwrap()
+impl<T> StorageGetTmp<T> for Vec<T> {
+    unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
+    where F: FnOnce(&T) -> R {
+        (func)(self.get_unchecked(usize::from(id)))
     }
 }
 
-impl<T> CollectionInsert<T> for Vec<T> {
-    fn insert(&mut self, object: T) -> Self::ID {
-        let id = Self::ID::new(self.len());
+impl<T> StorageGetRef<T> for Vec<T> {
+    unsafe fn get_ref(&self, id: Self::ID) -> &T {
+        self.get_unchecked(usize::from(id))
+    }
+}
+
+impl<T> StoragePut<T> for Vec<T> {
+    fn put(&mut self, object: T) -> Self::ID {
+        let id = self.len();
         self.push(object);
-        id
+        id.into()
     }
 }
 
-impl<T> SeriesCollection<T> for Vec<T> {
-    type SeriesID = ident::SeriesID32<T>;
-}
-
-impl<T> SeriesCollectionRef<T> for Vec<T> {
-    fn get_series_ref(&self, id: Self::SeriesID) -> &[T] {
-        let Range { start: beg, end } = id.into();
-        let [beg, end] = [beg, end].map(usize::from);
-        &self[beg .. end]
+impl<T: Clone> StoragePutTmp<T> for Vec<T> {
+    fn put_tmp(&mut self, object: &T) -> Self::ID {
+        let id = self.len();
+        self.push(object.clone());
+        id.into()
     }
 }
 
-impl<T> CollectionExtend<T> for Vec<T> {
-    fn extend<I>(&mut self, series: I) -> Self::SeriesID
+impl<T> SeqStorage<T> for Vec<T> {
+    type SeqID = ident::SeqIDLen<T>;
+}
+
+impl<T: Clone> SeqStorageGet<T> for Vec<T> {
+    type Seq<'a> = iter::Cloned<slice::Iter<'a, T>> where Self: 'a, T: 'a;
+
+    unsafe fn get_seq(&self, id: Self::SeqID) -> Self::Seq<'_> {
+        self.get_unchecked(Range::<usize>::from(id)).iter().cloned()
+    }
+}
+
+impl<T> SeqStorageGetTmp<T> for Vec<T> {
+    unsafe fn get_seq_tmp<R, F>(&self, id: Self::SeqID, func: F) -> R
+    where F: FnOnce(&[T]) -> R {
+        (func)(self.get_unchecked(Range::<usize>::from(id)))
+    }
+}
+
+impl<T> SeqStorageGetRef<T> for Vec<T> {
+    unsafe fn get_seq_ref(&self, id: Self::SeqID) -> &[T] {
+        self.get_unchecked(Range::<usize>::from(id))
+    }
+}
+
+impl<T> SeqStoragePut<T> for Vec<T> {
+    fn put_seq<I>(&mut self, series: I) -> Self::SeqID
     where I: IntoIterator<Item = T> {
-        let beg = Self::ID::new(self.len());
+        let beg = Self::ID::from(self.len());
         <Self as iter::Extend<T>>::extend(self, series);
-        let end = Self::ID::new(self.len());
+        let end = Self::ID::from(self.len());
         (beg .. end).into()
     }
 
-    fn try_extend<E, F, I>(
+    fn try_put_seq<E, F, I>(
         &mut self,
         series: I,
-    ) -> <F as Residual<Self::SeriesID>>::TryType
+    ) -> <F as Residual<Self::SeqID>>::TryType
     where I: IntoIterator<Item = E>,
           E: Try<Output = T, Residual = F>,
-          F: Residual<Self::SeriesID> {
-        let beg = Self::ID::new(self.len());
+          F: Residual<Self::SeqID> {
+        let beg = Self::ID::from(self.len());
         for item in series {
             match item.branch() {
                 ControlFlow::Continue(item) => {
@@ -68,14 +107,16 @@ impl<T> CollectionExtend<T> for Vec<T> {
                 },
             }
         }
-        let end = Self::ID::new(self.len());
+        let end = Self::ID::from(self.len());
         Try::from_output((beg .. end).into())
     }
 }
 
-/// A [`Collector`] that wraps items in [`Vec`].
-pub struct VecCollector;
-
-impl Collector for VecCollector {
-    type Collection<T: AtomicObject> = Vec<T>;
+impl<T: Clone> SeqStoragePutTmp<T> for Vec<T> {
+    fn put_seq_tmp(&mut self, series: &[T]) -> Self::SeqID {
+        let beg = Self::ID::from(self.len());
+        self.extend_from_slice(series);
+        let end = Self::ID::from(self.len());
+        (beg .. end).into()
+    }
 }

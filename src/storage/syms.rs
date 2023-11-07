@@ -6,6 +6,7 @@
 //!
 //! [`string-interner`]: https://github.com/robbepop/string-interner
 
+use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
 use core::ops::Deref;
@@ -41,78 +42,137 @@ impl Deref for Symbol {
     }
 }
 
+impl Object for Symbol {
+    type Storage<D: Disposition> = Symbols<D>;
+    type ID = SymbolID;
+}
+
 impl fmt::Debug for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <str as fmt::Debug>::fmt(self.inner, f)
+        <str as fmt::Debug>::fmt(&self.inner, f)
     }
 }
 
-impl<C: Collector> Object<C> for Symbol
-where Symbols<C::Collection<u8>>: Collection<Symbol> {
-    type Collection = Symbols<C::Collection<u8>>;
+impl fmt::Display for Symbol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <str as fmt::Display>::fmt(&self.inner, f)
+    }
 }
 
 /// The identifier for a symbol.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct SymbolID<C: SeriesCollection<u8>> {
+pub struct SymbolID {
     /// The ID of the underlying byte series.
-    inner: C::SeriesID,
+    inner: ident::SeqID32<u8>,
 }
 
-impl<C: SeriesCollection<u8>> Identifier for SymbolID<C> {
+impl PartialOrd for SymbolID {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let [lhs, rhs] = [*self, *other]
+            .map(|x| x.inner)
+            .map(Range::<ident::ID32<u8>>::from)
+            .map(|x| x.start);
+        lhs.partial_cmp(&rhs)
+    }
+}
+
+impl Ord for SymbolID {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let [lhs, rhs] = [*self, *other]
+            .map(|x| x.inner)
+            .map(Range::<ident::ID32<u8>>::from)
+            .map(|x| x.start);
+        lhs.cmp(&rhs)
+    }
+}
+
+impl Ident for SymbolID {
     type Object = Symbol;
 }
 
 /// A collection of [`Symbol`]s.
-pub struct Symbols<C: SeriesCollection<u8>> {
+pub struct Symbols<D: Disposition> {
     /// A hash table for deduplicating strings.
-    hashes: HashTable<SymbolID<C>>,
+    hashes: HashTable<SymbolID>,
 
     /// The contents of every contained string.
-    contents: C,
+    contents: D::SeqStorage<u8>,
 }
 
-impl<C: SeriesCollection<u8>> Symbols<C> {
-    /// Retrieved an interned symbol.
-    unsafe fn get(contents: &C, id: SymbolID<C>) -> &Symbol {
+impl<D: Disposition> Symbols<D> {
+    /// Retrieved an interned symbol temporarily.
+    unsafe fn get_sym_tmp<R, F>(
+        contents: &D::SeqStorage<u8>,
+        id: SymbolID,
+        func: F,
+    ) -> R
+    where D::SeqStorage<u8>: SeqStorageGetTmp<u8>,
+          F: FnOnce(&Symbol) -> R {
+        let range = Range::<u32>::from(id.inner);
+        let range = [range.start, range.end]
+            .map(usize::try_from)
+            .map(Result::unwrap)
+            .map(ident::IDLen::<u8>::from);
+        let seqid = ident::SeqIDLen::from(range[0] .. range[1]);
+
         // SAFETY:
         // - The caller guarantees that 'id' belongs to this collection.
         // - Thus the 'id' must have been created by 'insert_ref()'.
         // - 'insert_ref()' only takes valid strings as input.
         // - Thus the extracted item is also a valid string.
-        let raw = unsafe { contents.get_series_ref(id.inner) };
-        Symbol::new(unsafe { core::str::from_utf8_unchecked(raw) })
+        unsafe { contents.get_seq_tmp(seqid, |raw| {
+            let str = core::str::from_utf8_unchecked(raw);
+            let sym = Symbol::new(str);
+            (func)(sym)
+        }) }
     }
 }
 
-impl<C: SeriesCollection<u8> + Default> Default for Symbols<C> {
+impl<D: Disposition> Default for Symbols<D>
+where D::SeqStorage<u8>: Default {
     fn default() -> Self {
         Self {
             hashes: HashTable::default(),
-            contents: C::default(),
+            contents: Default::default(),
         }
     }
 }
 
-impl<C: SeriesCollection<u8>> Collection<Symbol> for Symbols<C> {
-    type ID = SymbolID<C>;
+impl<D: Disposition> Storage<Symbol> for Symbols<D> {
+    type ID = SymbolID;
+    type Disposition = D;
+}
 
-    unsafe fn get(&self, id: Self::ID) -> Symbol
-    where Symbol: Sized + Copy {
-        unreachable!()
+impl<D: Disposition> StorageGetTmp<Symbol> for Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetTmp<u8> {
+    unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
+    where F: FnOnce(&Symbol) -> R {
+        Self::get_sym_tmp(&self.contents, id, func)
     }
 }
 
-impl<C: SeriesCollection<u8>> CollectionRef<Symbol> for Symbols<C>
-where C: SeriesCollectionRef<u8> {
+impl<D: Disposition> StorageGetRef<Symbol> for Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetRef<u8> {
     unsafe fn get_ref(&self, id: Self::ID) -> &Symbol {
-        Self::get(&self.contents, id)
+        use core::str::from_utf8_unchecked;
+
+        let range = Range::<u32>::from(id.inner);
+        let range = [range.start, range.end]
+            .map(usize::try_from)
+            .map(Result::unwrap)
+            .map(ident::IDLen::<u8>::from);
+        let seqid = ident::SeqIDLen::from(range[0] .. range[1]);
+
+        let raw = unsafe { self.contents.get_seq_ref(seqid) };
+        let str = unsafe { from_utf8_unchecked(raw) };
+        Symbol::new(str)
     }
 }
 
-impl<C: SeriesCollection<u8>> CollectionInsertRef<Symbol> for Symbols<C>
-where C: SeriesCollectionRef<u8> + CollectionExtend<u8> {
-    fn insert_ref(&mut self, object: &Symbol) -> Self::ID {
+impl<D: Disposition> StoragePutTmp<Symbol> for Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetTmp<u8> + SeqStoragePutTmp<u8> {
+    fn put_tmp(&mut self, object: &Symbol) -> Self::ID {
         /// Convenience function for hashing a [`Symbol`].
         fn hasher(input: &Symbol) -> u64 {
             let mut state = FxHasher::default();
@@ -120,17 +180,31 @@ where C: SeriesCollectionRef<u8> + CollectionExtend<u8> {
             state.finish()
         }
 
-        let hash = hasher(object);
-        let iseq = |id| unsafe { Self::get(&self.contents, id) == object };
-        match self.hashes.entry(hash, iseq, hasher) {
+        let key = hasher(object);
+        let hash = |&id: &_| unsafe {
+            Self::get_sym_tmp(&self.contents, id, hasher)
+        };
+        let iseq = |&id: &_| unsafe {
+            Self::get_sym_tmp(&self.contents, id, |symbol| object == symbol)
+        };
+
+        match self.hashes.entry(key, iseq, hash) {
             hash_table::Entry::Occupied(entry) => {
                 // The symbol is already loaded; finish.
                 entry.get().clone()
             },
             hash_table::Entry::Vacant(entry) => {
                 // The symbol didn't exist; add it.
-                entry.insert(hash);
-                SymbolID { inner: self.contents.extend(object.inner.bytes()) }
+                let bytes = object.inner.as_bytes();
+                let seqid = self.contents.put_seq_tmp(bytes);
+                let range = Range::<usize>::from(seqid);
+                let range = [range.start, range.end]
+                    .map(ident::ID32::<u8>::try_from)
+                    .map(Result::unwrap);
+                let seqid = ident::SeqID32::from(range[0] .. range[1]);
+                let symid = SymbolID { inner: seqid };
+                entry.insert(symid);
+                symid
             },
         }
     }

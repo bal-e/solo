@@ -1,125 +1,309 @@
-//! Identifiers for objects in storage.
-//!
-//! In general, 32-bit identifiers are used for efficiency.  It is very unlikely
-//! that more than 4 billion objects of any kind will exist simultaneously.  For
-//! niche optimization, [`NonZeroU32`] is used in particular.
+//! Identifiers for objects in [`Storage`].
 
+use core::cmp::Ordering;
 use core::fmt;
+use core::hash::{Hash, Hasher};
 use core::iter::Step;
 use core::marker::PhantomData;
-use core::num::NonZeroU32;
+use core::num::TryFromIntError;
 use core::ops::Range;
 
-use super::{Identifier, SeriesIdentifier};
+use super::{Ident, SeqIdent};
 
-/// A 32-bit numeric identifier for an [`Object`].
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ID32<T: ?Sized> {
-    inner: NonZeroU32,
-    _data: PhantomData<T>,
-}
+/// An integer overflow error.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct OverflowError;
 
-impl<T: ?Sized> ID32<T> {
-    /// Construct a new [`ID32`] from the given index.
-    ///
-    /// This function will panic if given [`u32::MAX`] or greater.
-    pub fn new(index: usize) -> Self {
-        // Increment the index to avoid the niche slot.
-        let index = u32::try_from(index)
-            .and_then(|index| index.checked_add(1))
-            .expect("Only indices smaller than `u32::MAX` are allowed!");
-
-        // SAFETY: We checked that 'index + 1' did not overflow, so it must be
-        // strictly greater than zero.
-        let index = unsafe { NonZeroU32::new_unchecked(index) };
-
-        Self { inner: index, _data: PhantomData }
-    }
-}
-
-impl<T: ?Sized> Identifier for ID32<T> {
-    type Object = T;
-}
-
-impl<T: ?Sized> fmt::Debug for ID32<T> {
+impl fmt::Display for OverflowError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <u32 as fmt::Debug>::fmt(&(self.inner.get() - 1), f)
+        f.write_str("an illegal integer overflow occurred")
     }
 }
 
-impl<T: ?Sized> Step for ID32<T> {
-    fn steps_between(beg: &Self, end: &Self) -> Option<usize> {
-        let [beg, end] = [*beg, *end].map(usize::from);
-        end.checked_sub(beg)
-    }
-
-    fn forward_checked(beg: Self, num: usize) -> Option<Self> {
-        u32::try_from(num)
-            .and_then(|num| beg.inner.checked_add(num))
-            .map(|index| Self { inner: index, _data: PhantomData })
-    }
-
-    fn backward_checked(beg: Self, num: usize) -> Option<Self> {
-        u32::try_from(num)
-            .and_then(|num| u32::from(beg).checked_sub(num))
-            .and_then(NonZeroU32::new)
-            .map(|index| Self { inner: index, _data: PhantomData })
+impl From<TryFromIntError> for OverflowError {
+    fn from(_: TryFromIntError) -> Self {
+        Self
     }
 }
 
-impl<T: ?Sized> From<ID32<T>> for u32 {
-    fn from(value: ID32<T>) -> Self {
-        value.inner.get() - 1
-    }
+macro_rules! decl_id_any {
+    {
+        $intt:ty ;
+        $( #[ $oneas:meta ] )* pub struct $onet:ident ;
+        $( #[ $seqas:meta ] )* pub struct $seqt:ident ;
+    } => {
+        $( #[ $oneas ] )*
+        pub struct $onet<T: ?Sized> {
+            index: $intt,
+            _data: PhantomData<T>,
+        }
+
+        impl<T: ?Sized> Copy for $onet<T> {}
+
+        impl<T: ?Sized> Clone for $onet<T> {
+            fn clone(&self) -> Self {
+                *self
+            }
+        }
+
+        impl<T: ?Sized> PartialEq for $onet<T> {
+            fn eq(&self, other: &Self) -> bool {
+                self.index == other.index
+            }
+        }
+
+        impl<T: ?Sized> Eq for $onet<T> {}
+
+        impl<T: ?Sized> PartialOrd for $onet<T> {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                self.index.partial_cmp(&other.index)
+            }
+        }
+
+        impl<T: ?Sized> Ord for $onet<T> {
+            fn cmp(&self, other: &Self) -> Ordering {
+                self.index.cmp(&other.index)
+            }
+        }
+
+        impl<T: ?Sized> Hash for $onet<T> {
+            fn hash<H: Hasher>(&self, state: &mut H) {
+                self.index.hash(state)
+            }
+        }
+
+        impl<T: ?Sized> From<$intt> for $onet<T> {
+            fn from(index: $intt) -> Self {
+                Self { index, _data: PhantomData }
+            }
+        }
+
+        impl<T: ?Sized> From<$onet<T>> for $intt {
+            fn from(ident: $onet<T>) -> Self {
+                ident.index
+            }
+        }
+
+        impl<T: ?Sized> Ident for $onet<T> {
+            type Object = T;
+        }
+
+        impl<T: ?Sized> fmt::Debug for $onet<T> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                <$intt as fmt::Debug>::fmt(&self.index, f)
+            }
+        }
+
+        impl<T: ?Sized> fmt::Display for $onet<T> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                <$intt as fmt::Display>::fmt(&self.index, f)
+            }
+        }
+
+        impl<T: ?Sized> Step for $onet<T> {
+            fn steps_between(beg: &Self, end: &Self) -> Option<usize> {
+                let beg = usize::try_from(*beg).ok()?;
+                let end = usize::try_from(*end).ok()?;
+                end.checked_sub(beg)
+            }
+
+            fn forward_checked(beg: Self, num: usize) -> Option<Self> {
+                let num = <$intt>::try_from(num).ok()?;
+                let index = beg.index.checked_add(num)?;
+                Some(Self { index, _data: PhantomData })
+            }
+
+            fn backward_checked(beg: Self, num: usize) -> Option<Self> {
+                let num = <$intt>::try_from(num).ok()?;
+                let index = beg.index.checked_sub(num)?;
+                Some(Self { index, _data: PhantomData })
+            }
+        }
+
+        $( #[ $seqas ] )*
+        pub struct $seqt<T: ?Sized> {
+            range: [$intt; 2],
+            _data: PhantomData<T>,
+        }
+
+        impl<T: ?Sized> Copy for $seqt<T> {}
+
+        impl<T: ?Sized> Clone for $seqt<T> {
+            fn clone(&self) -> Self {
+                *self
+            }
+        }
+
+        impl<T: ?Sized> PartialEq for $seqt<T> {
+            fn eq(&self, other: &Self) -> bool {
+                self.range == other.range
+            }
+        }
+
+        impl<T: ?Sized> Eq for $seqt<T> {}
+
+        impl<T: ?Sized> Hash for $seqt<T> {
+            fn hash<H: Hasher>(&self, state: &mut H) {
+                self.range.hash(state)
+            }
+        }
+
+        impl<T: ?Sized> From<Range<$onet<T>>> for $seqt<T> {
+            fn from(range: Range<$onet<T>>) -> Self {
+                Self {
+                    range: [range.start, range.end].map(<$intt>::from),
+                    _data: PhantomData,
+                }
+            }
+        }
+
+        impl<T: ?Sized> TryFrom<($onet<T>, $intt)> for $seqt<T> {
+            type Error = OverflowError;
+
+            fn try_from(range: ($onet<T>, $intt)) -> Result<Self, Self::Error> {
+                let end = range.0.index
+                    .checked_add(range.1)
+                    .ok_or(OverflowError)?;
+
+                Ok(Self { range: [range.0.index, end], _data: PhantomData })
+            }
+        }
+
+        impl<T: ?Sized> From<Range<$intt>> for $seqt<T> {
+            fn from(range: Range<$intt>) -> Self {
+                Self { range: [range.start, range.end], _data: PhantomData }
+            }
+        }
+
+        impl<T: ?Sized> From<$seqt<T>> for Range<$onet<T>> {
+            fn from(ident: $seqt<T>) -> Self {
+                let [beg, end] = ident.range.map(<$onet<T>>::from);
+                beg .. end
+            }
+        }
+
+        impl<T: ?Sized> From<$seqt<T>> for ($onet<T>, $intt) {
+            fn from(ident: $seqt<T>) -> Self {
+                let beg = <$onet<T>>::from(ident.range[0]);
+                let len = ident.range[1]
+                    .checked_sub(ident.range[0])
+                    .unwrap_or(0);
+
+                (beg, len)
+            }
+        }
+
+        impl<T: ?Sized> From<$seqt<T>> for Range<$intt> {
+            fn from(ident: $seqt<T>) -> Self {
+                ident.range[0] .. ident.range[1]
+            }
+        }
+
+        impl<T: ?Sized> fmt::Debug for $seqt<T> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let range = self.range[0] .. self.range[1];
+                f.debug_struct(stringify!($seqt))
+                    .field("range", &range)
+                    .finish()
+            }
+        }
+
+        impl<T: ?Sized> fmt::Display for $seqt<T> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{} .. {}", self.range[0], self.range[1])
+            }
+        }
+
+        impl<T: ?Sized> SeqIdent for $seqt<T> {
+            type Single = $onet<T>;
+            type Object = T;
+        }
+    };
 }
 
-impl<T: ?Sized> From<ID32<T>> for usize {
-    fn from(value: ID32<T>) -> Self {
-        (value.inner.get() - 1).try_into().unwrap()
-    }
-}
+macro_rules! decl_id_fix {
+    {
+        $intt:ty ;
+        $( #[ $oneas:meta ] )* pub struct $onet:ident ;
+        $( #[ $seqas:meta ] )* pub struct $seqt:ident ;
+    } => {
+        decl_id_any! { $intt ;
+            $( #[ $oneas ] )* pub struct $onet ;
+            $( #[ $seqas ] )* pub struct $seqt ;
+        }
 
-/// A 32-bit numeric identifier for a series of [`Object`]s.
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SeriesID32<T: ?Sized> {
-    beg: ID32<T>,
-    len: u32,
-}
+        impl<T: ?Sized> TryFrom<usize> for $onet<T> {
+            type Error = <$intt as TryFrom<usize>>::Error;
 
-impl<T: ?Sized> SeriesID32<T> {
-    /// Construct a new [`SeriesID32`].
-    pub fn new(beg: ID32<T>, len: u32) -> Self {
-        Self { beg, len }
-    }
+            fn try_from(index: usize) -> Result<Self, Self::Error> {
+                Ok(Self { index: index.try_into()?, _data: PhantomData })
+            }
+        }
 
-    /// Get the beginning and length of this series.
-    pub fn into_beg_len(self) -> (ID32<T>, u32) {
-        (self.beg, self.len)
-    }
+        impl<T: ?Sized> TryFrom<$onet<T>> for usize {
+            type Error = <usize as TryFrom<$intt>>::Error;
 
-    /// Construct a new [`SeriesID32`] from the given range.
-    pub fn from_range(range: Range<ID32<T>>) -> Self {
-        let [beg, end] = [range.start, range.end].map(u32::from);
-        let len = end.checked_sub(beg).unwrap_or(0);
-        Self { beg: range.start, len }
-    }
-}
+            fn try_from(ident: $onet<T>) -> Result<Self, Self::Error> {
+                ident.index.try_into()
+            }
+        }
 
-impl<T: ?Sized> SeriesIdentifier for SeriesID32<T> {
-    type Single = ID32<T>;
-    type Object = T;
+        impl<T: ?Sized> TryFrom<($onet<T>, usize)> for $seqt<T> {
+            type Error = OverflowError;
 
-    fn into_range(self) -> Range<Self::Single> {
-        self.into()
-    }
-}
+            fn try_from(range: ($onet<T>, usize)) -> Result<Self, Self::Error> {
+                let len = <$intt>::try_from(range.1)?;
+                let end = range.0.index.checked_add(len).ok_or(OverflowError)?;
 
-impl<T: ?Sized> From<SeriesID32<T>> for Range<ID32<T>> {
-    fn from(value: SeriesID32<T>) -> Self {
-        let end = value.beg.inner.checked_add(value.len).unwrap();
-        Range {
-            start: value.beg,
-            end: ID32 { inner: end, _data: PhantomData },
+                Ok(Self { range: [range.0.index, end], _data: PhantomData })
+            }
+        }
+
+        impl<T: ?Sized> TryFrom<Range<usize>> for $seqt<T> {
+            type Error = <$intt as TryFrom<usize>>::Error;
+
+            fn try_from(range: Range<usize>) -> Result<Self, Self::Error> {
+                let [beg, end] = [range.start, range.end].map(<$intt>::try_from);
+                Ok(Self { range: [beg?, end?], _data: PhantomData })
+            }
+        }
+
+        impl<T: ?Sized> TryFrom<$seqt<T>> for ($onet<T>, usize) {
+            type Error = OverflowError;
+
+            fn try_from(ident: $seqt<T>) -> Result<Self, Self::Error> {
+                let beg = <$onet<T>>::from(ident.range[0]);
+                let len = ident.range[1]
+                    .checked_sub(ident.range[0])
+                    .unwrap_or(0);
+
+                Ok((beg, len.try_into()?))
+            }
+        }
+
+        impl<T: ?Sized> TryFrom<$seqt<T>> for Range<usize> {
+            type Error = <usize as TryFrom<$intt>>::Error;
+
+            fn try_from(ident: $seqt<T>) -> Result<Self, Self::Error> {
+                let [beg, end] = ident.range.map(usize::try_from);
+                Ok(beg? .. end?)
+            }
         }
     }
+}
+
+decl_id_fix! { u32;
+    /// A general 32-bit [`Ident`].
+    pub struct ID32;
+
+    /// A general 32-bit [`SeqIdent`].
+    pub struct SeqID32;
+}
+
+decl_id_any! { usize;
+    /// A general natural-width [`Ident`].
+    pub struct IDLen;
+
+    /// A general natural-width [`SeqIdent`].
+    pub struct SeqIDLen;
 }
