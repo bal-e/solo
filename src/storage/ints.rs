@@ -29,7 +29,6 @@ impl DerefMut for Integer {
 }
 
 impl Object for Integer {
-    type Storage<D: Disposition> = Integers<D>;
     type ID = IntegerID;
 }
 
@@ -98,24 +97,24 @@ impl fmt::Display for IntegerID {
 }
 
 /// A collection of [`Integer`]s.
-pub struct Integers<D: Disposition> {
+pub struct Integers<'s, D: Disposition<'s>> {
     inner: D::SeqStorage<u32>,
 }
 
-impl<D: Disposition> Default for Integers<D>
+impl<'s, D: Disposition<'s>> Default for Integers<'s, D>
 where D::SeqStorage<u32>: Default {
     fn default() -> Self {
         Self { inner: Default::default() }
     }
 }
 
-impl<D: Disposition> Storage<Integer> for Integers<D> {
+impl<'s, D: Disposition<'s>> Storage<'s, Integer> for Integers<'s, D> {
     type ID = IntegerID;
     type Disposition = D;
 }
 
-impl<D: Disposition> StorageGet<Integer> for Integers<D>
-where D::SeqStorage<u32>: SeqStorageGetTmp<u32> {
+impl<'s, D: Disposition<'s>> StorageGet<'s, Integer> for Integers<'s, D>
+where D::SeqStorage<u32>: SeqStorageGetTmp<'s, u32> {
     unsafe fn get(&self, id: Self::ID) -> Integer {
         match id {
             IntegerID::Inline(num) => BigInt::from(num).into(),
@@ -137,8 +136,8 @@ where D::SeqStorage<u32>: SeqStorageGetTmp<u32> {
     }
 }
 
-impl<D: Disposition> StoragePutTmp<Integer> for Integers<D>
-where D::SeqStorage<u32>: SeqStoragePut<u32> {
+impl<'s, D: Disposition<'s>> StoragePutTmp<'s, Integer> for Integers<'s, D>
+where D::SeqStorage<u32>: SeqStoragePut<'s, u32> {
     fn put_tmp(&mut self, object: &Integer) -> Self::ID {
         // If the number would fit inline, return it as-is.
         if let Ok(num) = i32::try_from(object.deref()) {
