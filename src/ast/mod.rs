@@ -2,10 +2,9 @@
 
 use std::num::NonZeroU32;
 use std::path::PathBuf;
+use std::rc::Rc;
 
-use crate::storage::{ID, SeqID};
-use crate::storage::ints::Integer;
-use crate::storage::syms::Symbol;
+use num_bigint::BigInt;
 
 mod ops;
 pub use ops::*;
@@ -13,25 +12,22 @@ pub use ops::*;
 mod prec;
 pub use prec::*;
 
-pub mod storage;
-pub use storage::Storage;
-
-pub mod parse;
-pub use parse::Parser;
+//pub mod parse;
+//pub use parse::Parser;
 
 /// A module definition.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Module {
     /// The name of the module.
-    pub name: ID<Symbol>,
+    pub name: String,
     /// Functions in the module.
-    pub functions: SeqID<Function>,
+    pub functions: Vec<Function>,
     /// The source of the module.
     pub source: ModuleSource,
 }
 
 /// The source of a module.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ModuleSource {
     /// Standard input.
     StdIn,
@@ -41,39 +37,39 @@ pub enum ModuleSource {
 }
 
 /// A function definition.
-#[derive(Copy, Clone)]
+#[derive(Clone, Debug)]
 pub struct Function {
     /// The name of the function.
-    pub name: ID<Symbol>,
+    pub name: String,
     /// The arguments to the function.
-    pub args: SeqID<Argument>,
+    pub args: Vec<Argument>,
     /// The return type of the function.
-    pub rett: ID<Type>,
+    pub rett: Type,
     /// The function body.
-    pub body: ID<Expr>,
+    pub body: Expr,
 }
 
 /// An argument to a function.
-#[derive(Copy, Clone)]
+#[derive(Clone, Debug)]
 pub struct Argument {
     /// The argument variable.
-    pub variable: ID<Variable>,
+    pub variable: Rc<Variable>,
     /// The type of the argument.
-    pub r#type: ID<Type>,
+    pub r#type: Type,
 }
 
 /// A variable.
-#[derive(Copy, Clone)]
+#[derive(Clone, Debug)]
 pub struct Variable {
     /// The name of the declared variable.
-    pub name: ID<Symbol>,
+    pub name: String,
 
     /// The expression defining the variable.
-    pub expr: ID<Expr>,
+    pub expr: Expr,
 }
 
 /// A type.
-#[derive(Copy, Clone)]
+#[derive(Clone, Debug)]
 pub struct Type {
     /// The underlying scalar type.
     pub scalar: ScalarType,
@@ -86,14 +82,14 @@ pub struct Type {
 }
 
 /// A scalar type.
-#[derive(Copy, Clone)]
+#[derive(Clone, Debug)]
 pub enum ScalarType {
     /// An integer type.
     Int(IntType),
 }
 
 /// An integer type.
-#[derive(Copy, Clone)]
+#[derive(Clone, Debug)]
 pub enum IntType {
     /// An unsigned integer type.
     U(NonZeroU32),
@@ -102,39 +98,39 @@ pub enum IntType {
 }
 
 /// A statement.
-#[derive(Copy, Clone)]
+#[derive(Clone, Debug)]
 pub enum Stmt {
     /// A variable declaration.
-    Let(ID<Variable>),
+    Let(Rc<Variable>),
 }
 
 /// An expression.
-#[derive(Copy, Clone)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     /// A unary expression.
-    Una(UnaOp, ID<Expr>),
+    Una(UnaOp, Box<Expr>),
 
     /// A binary expression.
-    Bin(BinOp, [ID<Expr>; 2]),
+    Bin(BinOp, [Box<Expr>; 2]),
 
     /// A parenthesized expression.
-    Par(ID<Expr>),
+    Par(Box<Expr>),
 
     /// A cast expression.
-    Cast(ID<Type>, ID<Expr>),
+    Cast(Type, Box<Expr>),
 
     /// An integer literal.
-    Int(ID<Integer>),
+    Int(BigInt),
 
     /// A reference to a local variable.
-    Var(ID<Variable>),
+    Var(Rc<Variable>),
 
     /// A reference to a function argument.
     Arg,
 
     /// A block expression.
     Blk {
-        stmts: SeqID<Stmt>,
-        rexpr: ID<Expr>,
+        stmts: Vec<Stmt>,
+        rexpr: Box<Expr>,
     },
 }
