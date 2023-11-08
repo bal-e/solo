@@ -91,7 +91,7 @@ impl Ident for SymbolID {
 }
 
 /// A collection of [`Symbol`]s.
-pub struct Symbols<'s, D: Disposition<'s>> {
+pub struct Symbols<D: Disposition> {
     /// A hash table for deduplicating strings.
     hashes: HashTable<SymbolID>,
 
@@ -99,14 +99,14 @@ pub struct Symbols<'s, D: Disposition<'s>> {
     contents: D::SeqStorage<u8>,
 }
 
-impl<'s, D: Disposition<'s>> Symbols<'s, D> {
+impl<D: Disposition> Symbols<D> {
     /// Retrieved an interned symbol temporarily.
     unsafe fn get_sym_tmp<R, F>(
         contents: &D::SeqStorage<u8>,
         id: SymbolID,
         func: F,
     ) -> R
-    where D::SeqStorage<u8>: SeqStorageGetTmp<'s, u8>,
+    where D::SeqStorage<u8>: SeqStorageGetTmp<u8>,
           F: FnOnce(&Symbol) -> R {
         let range = Range::<u32>::from(id.inner);
         let range = [range.start, range.end]
@@ -128,7 +128,7 @@ impl<'s, D: Disposition<'s>> Symbols<'s, D> {
     }
 }
 
-impl<'s, D: Disposition<'s>> Default for Symbols<'s, D>
+impl<D: Disposition> Default for Symbols<D>
 where D::SeqStorage<u8>: Default {
     fn default() -> Self {
         Self {
@@ -138,21 +138,47 @@ where D::SeqStorage<u8>: Default {
     }
 }
 
-impl<'s, D: Disposition<'s>> Storage<'s, Symbol> for Symbols<'s, D> {
+impl<D: Disposition> Storage<Symbol> for Symbols<D> {
     type ID = SymbolID;
     type Disposition = D;
 }
 
-impl<'s, D: Disposition<'s>> StorageGetTmp<'s, Symbol> for Symbols<'s, D>
-where D::SeqStorage<u8>: SeqStorageGetTmp<'s, u8> {
+impl<D: Disposition> Storage<Symbol> for &Symbols<D> {
+    type ID = SymbolID;
+    type Disposition = D;
+}
+
+impl<D: Disposition> Storage<Symbol> for &mut Symbols<D> {
+    type ID = SymbolID;
+    type Disposition = D;
+}
+
+impl<D: Disposition> StorageGetTmp<Symbol> for Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetTmp<u8> {
     unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
     where F: FnOnce(&Symbol) -> R {
         Self::get_sym_tmp(&self.contents, id, func)
     }
 }
 
-impl<'s, D: Disposition<'s>> StorageGetRef<'s, Symbol> for Symbols<'s, D>
-where D::SeqStorage<u8>: SeqStorageGetRef<'s, u8> {
+impl<D: Disposition> StorageGetTmp<Symbol> for &Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetTmp<u8> {
+    unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
+    where F: FnOnce(&Symbol) -> R {
+        Self::get_sym_tmp(&self.contents, id, func)
+    }
+}
+
+impl<D: Disposition> StorageGetTmp<Symbol> for &mut Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetTmp<u8> {
+    unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
+    where F: FnOnce(&Symbol) -> R {
+        Self::get_sym_tmp(&self.contents, id, func)
+    }
+}
+
+impl<D: Disposition> StorageGetRef<Symbol> for Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetRef<u8> {
     unsafe fn get_ref(&self, id: Self::ID) -> &Symbol {
         use core::str::from_utf8_unchecked;
 
@@ -169,8 +195,84 @@ where D::SeqStorage<u8>: SeqStorageGetRef<'s, u8> {
     }
 }
 
-impl<'s, D: Disposition<'s>> StoragePutTmp<'s, Symbol> for Symbols<'s, D>
-where D::SeqStorage<u8>: SeqStorageGetTmp<'s, u8> + SeqStoragePutTmp<'s, u8> {
+impl<D: Disposition> StorageGetRef<Symbol> for &Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetRef<u8> {
+    unsafe fn get_ref(&self, id: Self::ID) -> &Symbol {
+        use core::str::from_utf8_unchecked;
+
+        let range = Range::<u32>::from(id.inner);
+        let range = [range.start, range.end]
+            .map(usize::try_from)
+            .map(Result::unwrap)
+            .map(ident::IDLen::<u8>::from);
+        let seqid = ident::SeqIDLen::from(range[0] .. range[1]);
+
+        let raw = unsafe { self.contents.get_seq_ref(seqid) };
+        let str = unsafe { from_utf8_unchecked(raw) };
+        Symbol::new(str)
+    }
+}
+
+impl<D: Disposition> StorageGetRef<Symbol> for &mut Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetRef<u8> {
+    unsafe fn get_ref(&self, id: Self::ID) -> &Symbol {
+        use core::str::from_utf8_unchecked;
+
+        let range = Range::<u32>::from(id.inner);
+        let range = [range.start, range.end]
+            .map(usize::try_from)
+            .map(Result::unwrap)
+            .map(ident::IDLen::<u8>::from);
+        let seqid = ident::SeqIDLen::from(range[0] .. range[1]);
+
+        let raw = unsafe { self.contents.get_seq_ref(seqid) };
+        let str = unsafe { from_utf8_unchecked(raw) };
+        Symbol::new(str)
+    }
+}
+
+impl<D: Disposition> StoragePutTmp<Symbol> for Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetTmp<u8> + SeqStoragePutTmp<u8> {
+    fn put_tmp(&mut self, object: &Symbol) -> Self::ID {
+        /// Convenience function for hashing a [`Symbol`].
+        fn hasher(input: &Symbol) -> u64 {
+            let mut state = FxHasher::default();
+            input.hash(&mut state);
+            state.finish()
+        }
+
+        let key = hasher(object);
+        let hash = |&id: &_| unsafe {
+            Self::get_sym_tmp(&self.contents, id, hasher)
+        };
+        let iseq = |&id: &_| unsafe {
+            Self::get_sym_tmp(&self.contents, id, |symbol| object == symbol)
+        };
+
+        match self.hashes.entry(key, iseq, hash) {
+            hash_table::Entry::Occupied(entry) => {
+                // The symbol is already loaded; finish.
+                entry.get().clone()
+            },
+            hash_table::Entry::Vacant(entry) => {
+                // The symbol didn't exist; add it.
+                let bytes = object.inner.as_bytes();
+                let seqid = self.contents.put_seq_tmp(bytes);
+                let range = Range::<usize>::from(seqid);
+                let range = [range.start, range.end]
+                    .map(ident::ID32::<u8>::try_from)
+                    .map(Result::unwrap);
+                let seqid = ident::SeqID32::from(range[0] .. range[1]);
+                let symid = SymbolID { inner: seqid };
+                entry.insert(symid);
+                symid
+            },
+        }
+    }
+}
+
+impl<D: Disposition> StoragePutTmp<Symbol> for &mut Symbols<D>
+where D::SeqStorage<u8>: SeqStorageGetTmp<u8> + SeqStoragePutTmp<u8> {
     fn put_tmp(&mut self, object: &Symbol) -> Self::ID {
         /// Convenience function for hashing a [`Symbol`].
         fn hasher(input: &Symbol) -> u64 {

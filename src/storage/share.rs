@@ -1,7 +1,6 @@
 //! Safely sharing collections thread-locally.
 
-use core::cell::{self, RefCell};
-use core::mem::ManuallyDrop;
+use core::cell::RefCell;
 use core::ops::{ControlFlow, FromResidual, Residual, Try};
 
 use crate::util::MutCell;
@@ -10,11 +9,11 @@ use super::*;
 
 /// A [`Disposition`] for using [`Share`].
 #[derive(Default)]
-pub struct ShareDisposition<D> {
+pub struct ShareDisposition<D: Disposition> {
     inner: D,
 }
 
-impl<D> ShareDisposition<D> {
+impl<D: Disposition> ShareDisposition<D> {
     /// Construct a new [`ShareDisposition`].
     pub fn new(disposition: D) -> Self {
         Self { inner: disposition }
@@ -26,9 +25,9 @@ impl<D> ShareDisposition<D> {
     }
 }
 
-impl<'s, D: Disposition<'s>> Disposition<'s> for ShareDisposition<D> {
-    type Storage<T: 's> = Share<D::Storage<T>>;
-    type SeqStorage<T: 's> = SeqShare<D::SeqStorage<T>, T>;
+impl<D: Disposition> Disposition for ShareDisposition<D> {
+    type Storage<T> = Share<D::Storage<T>>;
+    type SeqStorage<T> = SeqShare<D::SeqStorage<T>, T>;
 }
 
 /// A sharing wrapper around a [`Storage`].
@@ -49,87 +48,155 @@ impl<S> Share<S> {
     }
 }
 
-impl<'s, S, T> Storage<'s, T> for Share<S>
-where S: Storage<'s, T>, T: ?Sized + 's {
+impl<S, T> Storage<T> for Share<S>
+where S: Storage<T>, T: ?Sized {
     type ID = S::ID;
     type Disposition = ShareDisposition<S::Disposition>;
 }
 
-impl<'s, S, T> StorageGet<'s, T> for Share<S>
-where S: StorageGet<'s, T>, T: 's {
+impl<S, T> Storage<T> for &Share<S>
+where S: Storage<T>, T: ?Sized {
+    type ID = S::ID;
+    type Disposition = ShareDisposition<S::Disposition>;
+}
+
+impl<S, T> Storage<T> for &mut Share<S>
+where S: Storage<T>, T: ?Sized {
+    type ID = S::ID;
+    type Disposition = ShareDisposition<S::Disposition>;
+}
+
+impl<S, T> StorageGet<T> for Share<S>
+where S: StorageGet<T> {
     unsafe fn get(&self, id: Self::ID) -> T {
         self.inner.borrow().get(id)
     }
 }
 
-impl<'s, S, T> StorageGetTmp<'s, T> for Share<S>
-where S: StorageGetTmp<'s, T>, T: ?Sized + 's {
+impl<S, T> StorageGet<T> for &Share<S>
+where S: StorageGet<T> {
+    unsafe fn get(&self, id: Self::ID) -> T {
+        self.inner.borrow().get(id)
+    }
+}
+
+impl<S, T> StorageGet<T> for &mut Share<S>
+where S: StorageGet<T> {
+    unsafe fn get(&self, id: Self::ID) -> T {
+        self.inner.borrow().get(id)
+    }
+}
+
+impl<S, T> StorageGetTmp<T> for Share<S>
+where S: StorageGetTmp<T>, T: ?Sized {
     unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
     where F: FnOnce(&T) -> R {
         self.inner.borrow().get_tmp(id, func)
     }
 }
 
-// impl<'s, S, T> !StorageGetRef<'s, T> for Share<S>
-// where S: StorageGetRef<'s, T>, T: ?Sized + 's;
+impl<S, T> StorageGetTmp<T> for &Share<S>
+where S: StorageGetTmp<T>, T: ?Sized {
+    unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
+    where F: FnOnce(&T) -> R {
+        self.inner.borrow().get_tmp(id, func)
+    }
+}
 
-impl<'s, S, T> StoragePut<'s, T> for Share<S>
-where S: StoragePut<'s, T>, T: 's {
+impl<S, T> StorageGetTmp<T> for &mut Share<S>
+where S: StorageGetTmp<T>, T: ?Sized {
+    unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
+    where F: FnOnce(&T) -> R {
+        self.inner.borrow().get_tmp(id, func)
+    }
+}
+
+// impl<S, T> !StorageGetRef<T> for Share<S>
+// where S: StorageGetRef<T>, T: ?Sized;
+
+impl<S, T> StoragePut<T> for Share<S>
+where S: StoragePut<T> {
     fn put(&mut self, object: T) -> Self::ID {
         self.inner.get_mut().put(object)
     }
 }
 
-impl<'s, S, T> StoragePut<'s, T> for &'s Share<S>
-where S: StoragePut<'s, T>, T: 's {
+impl<S, T> StoragePut<T> for &Share<S>
+where S: StoragePut<T> {
     fn put(&mut self, object: T) -> Self::ID {
         self.inner.borrow_mut().put(object)
     }
 }
 
-impl<'s, S, T> StoragePutTmp<'s, T> for Share<S>
-where S: StoragePutTmp<'s, T>, T: ?Sized + 's {
+impl<S, T> StoragePut<T> for &mut Share<S>
+where S: StoragePut<T> {
+    fn put(&mut self, object: T) -> Self::ID {
+        self.inner.get_mut().put(object)
+    }
+}
+
+impl<S, T> StoragePutTmp<T> for Share<S>
+where S: StoragePutTmp<T>, T: ?Sized {
     fn put_tmp(&mut self, object: &T) -> Self::ID {
         self.inner.get_mut().put_tmp(object)
     }
 }
 
-impl<'s, S, T> StoragePutTmp<'s, T> for &'s Share<S>
-where S: StoragePutTmp<'s, T>, T: ?Sized + 's {
+impl<S, T> StoragePutTmp<T> for &Share<S>
+where S: StoragePutTmp<T>, T: ?Sized {
     fn put_tmp(&mut self, object: &T) -> Self::ID {
         self.inner.borrow_mut().put_tmp(object)
     }
 }
 
-impl<'s, S, T> SeqStorage<'s, T> for Share<S>
-where S: SeqStorage<'s, T>, T: 's {
-    type SeqID = S::SeqID;
-}
-
-impl<'s, S, T> SeqStorageGet<'s, T> for Share<S>
-where S: SeqStorageGet<'s, T>, T: 's {
-    type Seq<'t> = Seq<'s, 't, S, T> where 's: 't;
-
-    unsafe fn get_seq<'t>(&'t self, id: Self::SeqID) -> Self::Seq<'t>
-    where 's: 't {
-        let borrow = self.inner.borrow();
-        // SAFETY: The cell has already been borrowed immutably.
-        let inner = unsafe { &* self.inner.as_ptr() };
-        let seq = inner.get_seq(id);
-        Seq { borrow, inner: ManuallyDrop::new(seq) }
+impl<S, T> StoragePutTmp<T> for &mut Share<S>
+where S: StoragePutTmp<T>, T: ?Sized {
+    fn put_tmp(&mut self, object: &T) -> Self::ID {
+        self.inner.get_mut().put_tmp(object)
     }
 }
 
-impl<'s, S, T> SeqStorageGetTmp<'s, T> for Share<S>
-where S: SeqStorageGetTmp<'s, T>, T: 's {
+impl<S, T> SeqStorage<T> for Share<S>
+where S: SeqStorage<T> {
+    type SeqID = S::SeqID;
+}
+
+impl<S, T> SeqStorage<T> for &Share<S>
+where S: SeqStorage<T> {
+    type SeqID = S::SeqID;
+}
+
+impl<S, T> SeqStorage<T> for &mut Share<S>
+where S: SeqStorage<T> {
+    type SeqID = S::SeqID;
+}
+
+impl<S, T> SeqStorageGetTmp<T> for Share<S>
+where S: SeqStorageGetTmp<T> {
     unsafe fn get_seq_tmp<R, F>(&self, id: Self::SeqID, func: F) -> R
     where F: FnOnce(&[T]) -> R {
         self.inner.borrow().get_seq_tmp(id, func)
     }
 }
 
-impl<'s, S, T> SeqStoragePut<'s, T> for Share<S>
-where S: SeqStoragePut<'s, T>, T: 's {
+impl<S, T> SeqStorageGetTmp<T> for &Share<S>
+where S: SeqStorageGetTmp<T> {
+    unsafe fn get_seq_tmp<R, F>(&self, id: Self::SeqID, func: F) -> R
+    where F: FnOnce(&[T]) -> R {
+        self.inner.borrow().get_seq_tmp(id, func)
+    }
+}
+
+impl<S, T> SeqStorageGetTmp<T> for &mut Share<S>
+where S: SeqStorageGetTmp<T> {
+    unsafe fn get_seq_tmp<R, F>(&self, id: Self::SeqID, func: F) -> R
+    where F: FnOnce(&[T]) -> R {
+        self.inner.borrow().get_seq_tmp(id, func)
+    }
+}
+
+impl<S, T> SeqStoragePut<T> for Share<S>
+where S: SeqStoragePut<T> {
     fn put_seq<I>(&mut self, series: I) -> Self::SeqID
     where I: IntoIterator<Item = T> {
         self.inner.get_mut().put_seq(series)
@@ -146,20 +213,45 @@ where S: SeqStoragePut<'s, T>, T: 's {
     }
 }
 
-// impl<'s, S, T> !SeqStoragePut<'s, T> for &'s Share<S>
-// where S: SeqStoragePut<'s, T>, T: ?Sized + 's;
+// impl<S, T> !SeqStoragePut<T> for &'s Share<S>
+// where S: SeqStoragePut<T>, T: ?Sized;
 
-impl<'s, S, T> SeqStoragePutTmp<'s, T> for Share<S>
-where S: SeqStoragePutTmp<'s, T>, T: 's {
+impl<S, T> SeqStoragePut<T> for &mut Share<S>
+where S: SeqStoragePut<T> {
+    fn put_seq<I>(&mut self, series: I) -> Self::SeqID
+    where I: IntoIterator<Item = T> {
+        self.inner.get_mut().put_seq(series)
+    }
+
+    fn try_put_seq<E, F, I>(
+        &mut self,
+        series: I,
+    ) -> <F as Residual<Self::SeqID>>::TryType
+    where I: IntoIterator<Item = E>,
+          E: Try<Output = T, Residual = F>,
+          F: Residual<Self::SeqID> {
+        self.inner.get_mut().try_put_seq(series)
+    }
+}
+
+impl<S, T> SeqStoragePutTmp<T> for Share<S>
+where S: SeqStoragePutTmp<T> {
     fn put_seq_tmp(&mut self, series: &[T]) -> Self::SeqID {
         self.inner.get_mut().put_seq_tmp(series)
     }
 }
 
-impl<'s, S, T> SeqStoragePutTmp<'s, T> for &'s Share<S>
-where S: SeqStoragePutTmp<'s, T>, T: 's {
+impl<S, T> SeqStoragePutTmp<T> for &Share<S>
+where S: SeqStoragePutTmp<T> {
     fn put_seq_tmp(&mut self, series: &[T]) -> Self::SeqID {
         self.inner.borrow_mut().put_seq_tmp(series)
+    }
+}
+
+impl<S, T> SeqStoragePutTmp<T> for &mut Share<S>
+where S: SeqStoragePutTmp<T> {
+    fn put_seq_tmp(&mut self, series: &[T]) -> Self::SeqID {
+        self.inner.get_mut().put_seq_tmp(series)
     }
 }
 
@@ -196,87 +288,155 @@ impl<S: Default, T> Default for SeqShare<S, T> {
     }
 }
 
-impl<'s, S, T, U> Storage<'s, U> for SeqShare<S, T>
-where S: Storage<'s, U>, T: 's, U: ?Sized + 's {
+impl<S, T, U> Storage<U> for SeqShare<S, T>
+where S: Storage<U>, U: ?Sized {
     type ID = S::ID;
     type Disposition = ShareDisposition<S::Disposition>;
 }
 
-impl<'s, S, T, U> StorageGet<'s, U> for SeqShare<S, T>
-where S: StorageGet<'s, U>, T: 's, U: 's {
+impl<S, T, U> Storage<U> for &SeqShare<S, T>
+where S: Storage<U>, U: ?Sized {
+    type ID = S::ID;
+    type Disposition = ShareDisposition<S::Disposition>;
+}
+
+impl<S, T, U> Storage<U> for &mut SeqShare<S, T>
+where S: Storage<U>, U: ?Sized {
+    type ID = S::ID;
+    type Disposition = ShareDisposition<S::Disposition>;
+}
+
+impl<S, T, U> StorageGet<U> for SeqShare<S, T>
+where S: StorageGet<U> {
     unsafe fn get(&self, id: Self::ID) -> U {
         self.inner.borrow().get(id)
     }
 }
 
-impl<'s, S, T, U> StorageGetTmp<'s, U> for SeqShare<S, T>
-where S: StorageGetTmp<'s, U>, T: 's, U: ?Sized + 's {
+impl<S, T, U> StorageGet<U> for &SeqShare<S, T>
+where S: StorageGet<U> {
+    unsafe fn get(&self, id: Self::ID) -> U {
+        self.inner.borrow().get(id)
+    }
+}
+
+impl<S, T, U> StorageGet<U> for &mut SeqShare<S, T>
+where S: StorageGet<U> {
+    unsafe fn get(&self, id: Self::ID) -> U {
+        self.inner.borrow().get(id)
+    }
+}
+
+impl<S, T, U> StorageGetTmp<U> for SeqShare<S, T>
+where S: StorageGetTmp<U>, U: ?Sized {
     unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
     where F: FnOnce(&U) -> R {
         self.inner.borrow().get_tmp(id, func)
     }
 }
 
-// impl<'s, S, T, U> !StorageGetRef<'s, U> for SeqShare<S, T>
-// where S: StorageGetRef<'s, U>, T: 's, U: ?Sized + 's;
+impl<S, T, U> StorageGetTmp<U> for &SeqShare<S, T>
+where S: StorageGetTmp<U>, U: ?Sized {
+    unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
+    where F: FnOnce(&U) -> R {
+        self.inner.borrow().get_tmp(id, func)
+    }
+}
 
-impl<'s, S, T, U> StoragePut<'s, U> for SeqShare<S, T>
-where S: StoragePut<'s, U>, T: 's, U: 's {
+impl<S, T, U> StorageGetTmp<U> for &mut SeqShare<S, T>
+where S: StorageGetTmp<U>, U: ?Sized {
+    unsafe fn get_tmp<R, F>(&self, id: Self::ID, func: F) -> R
+    where F: FnOnce(&U) -> R {
+        self.inner.borrow().get_tmp(id, func)
+    }
+}
+
+// impl<S, T, U> !StorageGetRef<U> for SeqShare<S, T>
+// where S: StorageGetRef<U>, U: ?Sized;
+
+impl<S, T, U> StoragePut<U> for SeqShare<S, T>
+where S: StoragePut<U> {
     fn put(&mut self, object: U) -> Self::ID {
         self.inner.get_mut().put(object)
     }
 }
 
-impl<'s, S, T, U> StoragePut<'s, U> for &'s SeqShare<S, T>
-where S: StoragePut<'s, U>, T: 's, U: 's {
+impl<S, T, U> StoragePut<U> for &SeqShare<S, T>
+where S: StoragePut<U> {
     fn put(&mut self, object: U) -> Self::ID {
         self.inner.borrow_mut().put(object)
     }
 }
 
-impl<'s, S, T, U> StoragePutTmp<'s, U> for SeqShare<S, T>
-where S: StoragePutTmp<'s, U>, T: 's, U: ?Sized + 's {
+impl<S, T, U> StoragePut<U> for &mut SeqShare<S, T>
+where S: StoragePut<U> {
+    fn put(&mut self, object: U) -> Self::ID {
+        self.inner.get_mut().put(object)
+    }
+}
+
+impl<S, T, U> StoragePutTmp<U> for SeqShare<S, T>
+where S: StoragePutTmp<U>, U: ?Sized {
     fn put_tmp(&mut self, object: &U) -> Self::ID {
         self.inner.get_mut().put_tmp(object)
     }
 }
 
-impl<'s, S, T, U> StoragePutTmp<'s, U> for &'s SeqShare<S, T>
-where S: StoragePutTmp<'s, U>, T: 's, U: ?Sized + 's {
+impl<S, T, U> StoragePutTmp<U> for &SeqShare<S, T>
+where S: StoragePutTmp<U>, U: ?Sized {
     fn put_tmp(&mut self, object: &U) -> Self::ID {
         self.inner.borrow_mut().put_tmp(object)
     }
 }
 
-impl<'s, S, T, U> SeqStorage<'s, U> for SeqShare<S, T>
-where S: SeqStorage<'s, U>, T: 's, U: 's {
-    type SeqID = S::SeqID;
-}
-
-impl<'s, S, T, U> SeqStorageGet<'s, U> for SeqShare<S, T>
-where S: SeqStorageGet<'s, U>, T: 's, U: 's {
-    type Seq<'t> = Seq<'s, 't, S, U> where 's: 't;
-
-    unsafe fn get_seq<'t>(&'t self, id: Self::SeqID) -> Self::Seq<'t>
-    where 's: 't {
-        let borrow = self.inner.borrow();
-        // SAFETY: The cell has already been borrowed immutably.
-        let inner = unsafe { &* self.inner.as_ptr() };
-        let seq = inner.get_seq(id);
-        Seq { borrow, inner: ManuallyDrop::new(seq) }
+impl<S, T, U> StoragePutTmp<U> for &mut SeqShare<S, T>
+where S: StoragePutTmp<U>, U: ?Sized {
+    fn put_tmp(&mut self, object: &U) -> Self::ID {
+        self.inner.get_mut().put_tmp(object)
     }
 }
 
-impl<'s, S, T, U> SeqStorageGetTmp<'s, U> for SeqShare<S, T>
-where S: SeqStorageGetTmp<'s, U>, T: 's, U: 's {
+impl<S, T, U> SeqStorage<U> for SeqShare<S, T>
+where S: SeqStorage<U> {
+    type SeqID = S::SeqID;
+}
+
+impl<S, T, U> SeqStorage<U> for &SeqShare<S, T>
+where S: SeqStorage<U> {
+    type SeqID = S::SeqID;
+}
+
+impl<S, T, U> SeqStorage<U> for &mut SeqShare<S, T>
+where S: SeqStorage<U> {
+    type SeqID = S::SeqID;
+}
+
+impl<S, T, U> SeqStorageGetTmp<U> for SeqShare<S, T>
+where S: SeqStorageGetTmp<U> {
     unsafe fn get_seq_tmp<R, F>(&self, id: Self::SeqID, func: F) -> R
     where F: FnOnce(&[U]) -> R {
         self.inner.borrow().get_seq_tmp(id, func)
     }
 }
 
-impl<'s, S, T, U> SeqStoragePut<'s, U> for SeqShare<S, T>
-where S: SeqStoragePut<'s, U>, T: 's, U: 's {
+impl<S, T, U> SeqStorageGetTmp<U> for &SeqShare<S, T>
+where S: SeqStorageGetTmp<U> {
+    unsafe fn get_seq_tmp<R, F>(&self, id: Self::SeqID, func: F) -> R
+    where F: FnOnce(&[U]) -> R {
+        self.inner.borrow().get_seq_tmp(id, func)
+    }
+}
+
+impl<S, T, U> SeqStorageGetTmp<U> for &mut SeqShare<S, T>
+where S: SeqStorageGetTmp<U> {
+    unsafe fn get_seq_tmp<R, F>(&self, id: Self::SeqID, func: F) -> R
+    where F: FnOnce(&[U]) -> R {
+        self.inner.borrow().get_seq_tmp(id, func)
+    }
+}
+
+impl<S, T, U> SeqStoragePut<U> for SeqShare<S, T>
+where S: SeqStoragePut<U> {
     fn put_seq<I>(&mut self, series: I) -> Self::SeqID
     where I: IntoIterator<Item = U> {
         self.inner.get_mut().put_seq(series)
@@ -293,8 +453,8 @@ where S: SeqStoragePut<'s, U>, T: 's, U: 's {
     }
 }
 
-impl<'s, S, T> SeqStoragePut<'s, T> for &'s SeqShare<S, T>
-where S: SeqStoragePut<'s, T>, T: 's {
+impl<S, T> SeqStoragePut<T> for &SeqShare<S, T>
+where S: SeqStoragePut<T> {
     fn put_seq<I>(&mut self, series: I) -> Self::SeqID
     where I: IntoIterator<Item = T> {
         // We load the series into the local stack first, so that the iterator
@@ -342,69 +502,41 @@ where S: SeqStoragePut<'s, T>, T: 's {
     }
 }
 
-impl<'s, S, T, U> SeqStoragePutTmp<'s, U> for SeqShare<S, T>
-where S: SeqStoragePutTmp<'s, U>, T: 's, U: 's {
+impl<S, T, U> SeqStoragePut<U> for &mut SeqShare<S, T>
+where S: SeqStoragePut<U> {
+    fn put_seq<I>(&mut self, series: I) -> Self::SeqID
+    where I: IntoIterator<Item = U> {
+        self.inner.get_mut().put_seq(series)
+    }
+
+    fn try_put_seq<E, F, I>(
+        &mut self,
+        series: I,
+    ) -> <F as Residual<Self::SeqID>>::TryType
+    where I: IntoIterator<Item = E>,
+          E: Try<Output = U, Residual = F>,
+          F: Residual<Self::SeqID> {
+        self.inner.get_mut().try_put_seq(series)
+    }
+}
+
+impl<S, T, U> SeqStoragePutTmp<U> for SeqShare<S, T>
+where S: SeqStoragePutTmp<U> {
     fn put_seq_tmp(&mut self, series: &[U]) -> Self::SeqID {
         self.inner.get_mut().put_seq_tmp(series)
     }
 }
 
-impl<'s, S, T, U> SeqStoragePutTmp<'s, U> for &'s SeqShare<S, T>
-where S: SeqStoragePutTmp<'s, U>, T: 's, U: 's {
+impl<S, T, U> SeqStoragePutTmp<U> for &SeqShare<S, T>
+where S: SeqStoragePutTmp<U>, {
     fn put_seq_tmp(&mut self, series: &[U]) -> Self::SeqID {
         self.inner.borrow_mut().put_seq_tmp(series)
     }
 }
 
-/// A getter sequence from a [`Share`].
-#[derive(Debug)]
-pub struct Seq<'s: 't, 't, S: Storage<'s, T>, T: 's>
-where S: SeqStorageGet<'s, T> {
-    /// A borrow of the shared collection.
-    borrow: cell::Ref<'t, S>,
-
-    /// The storage's getter sequence.
-    inner: ManuallyDrop<S::Seq<'t>>,
-}
-
-impl<'s: 't, 't, S: Storage<'s, T>, T: 's> Seq<'s, 't, S, T>
-where S: SeqStorageGet<'s, T> {
-    /// Access the underlying iterator immutably.
-    pub fn get(&self) -> &S::Seq<'t> {
-        &self.inner
-    }
-
-    /// Access the underlying iterator mutably.
-    pub fn get_mut(&mut self) -> &mut S::Seq<'t> {
-        &mut self.inner
+impl<S, T, U> SeqStoragePutTmp<U> for &mut SeqShare<S, T>
+where S: SeqStoragePutTmp<U> {
+    fn put_seq_tmp(&mut self, series: &[U]) -> Self::SeqID {
+        self.inner.get_mut().put_seq_tmp(series)
     }
 }
-
-impl<'s: 't, 't, S: Storage<'s, T>, T: 's> Clone for Seq<'s, 't, S, T>
-where S: SeqStorageGet<'s, T>, S::Seq<'t>: Clone {
-    fn clone(&self) -> Self {
-        Self {
-            borrow: cell::Ref::clone(&self.borrow),
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl<'s: 't, 't, S: Storage<'s, T>, T: 's> Drop for Seq<'s, 't, S, T>
-where S: SeqStorageGet<'s, T> {
-    fn drop(&mut self) {
-        // Drop 'inner' strictly before the borrow.
-        unsafe { ManuallyDrop::drop(&mut self.inner) };
-    }
-}
-
-impl<'s: 't, 't, S: Storage<'s, T>, T: 's> Iterator for Seq<'s, 't, S, T>
-where S: SeqStorageGet<'s, T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
-    }
-}
-
-// TODO: Implement more iterator methods for 'Seq'.

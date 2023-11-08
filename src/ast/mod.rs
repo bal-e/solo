@@ -16,7 +16,8 @@ pub use prec::*;
 pub mod storage;
 pub use storage::Storage;
 
-//pub mod parse;
+pub mod parse;
+pub use parse::Parser;
 
 /// A module definition.
 #[derive(Clone)]
@@ -24,7 +25,7 @@ pub struct Module {
     /// The name of the module.
     pub name: ID<Symbol>,
     /// Functions in the module.
-    pub funcs: SeqID<Function>,
+    pub functions: SeqID<Function>,
     /// The source of the module.
     pub source: ModuleSource,
 }
@@ -55,17 +56,18 @@ pub struct Function {
 /// An argument to a function.
 #[derive(Copy, Clone)]
 pub struct Argument {
-    /// The name of the argument.
-    pub name: ID<Symbol>,
+    /// The argument variable.
+    pub variable: ID<Variable>,
     /// The type of the argument.
     pub r#type: ID<Type>,
-    /// The expression representing the argument.
-    pub expr: ID<Expr>,
 }
 
 /// A variable.
 #[derive(Copy, Clone)]
 pub struct Variable {
+    /// The name of the declared variable.
+    pub name: ID<Symbol>,
+
     /// The expression defining the variable.
     pub expr: ID<Expr>,
 }
@@ -103,13 +105,7 @@ pub enum IntType {
 #[derive(Copy, Clone)]
 pub enum Stmt {
     /// A variable declaration.
-    Let {
-        /// The name of the declared variable.
-        name: ID<Symbol>,
-
-        /// The expression defining the variable.
-        expr: ID<Expr>,
-    },
+    Let(ID<Variable>),
 }
 
 /// An expression.
@@ -131,7 +127,7 @@ pub enum Expr {
     Int(ID<Integer>),
 
     /// A reference to a local variable.
-    Var(ID<Symbol>, ID<Variable>),
+    Var(ID<Variable>),
 
     /// A reference to a function argument.
     Arg,
