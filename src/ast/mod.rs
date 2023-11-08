@@ -12,8 +12,8 @@ pub use ops::*;
 mod prec;
 pub use prec::*;
 
-//pub mod parse;
-//pub use parse::Parser;
+pub mod parse;
+pub use parse::parse_mod;
 
 /// A module definition.
 #[derive(Clone, Debug)]

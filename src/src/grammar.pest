@@ -3,15 +3,15 @@
 WHITESPACE = _{ " " | "\t" | NEWLINE }
 
 /// A module.
-module = { SOI ~ func* ~ EOI }
+mod = { SOI ~ fn* ~ EOI }
 
 /// A function.
-func = { func_kw ~ name
-       ~ "(" ~ (func_arg ~ ",")* ~ func_arg? ~ ")"
-       ~ "->" ~ type
-       ~ expr_blk }
-  func_kw = @{ "fn" ~ !(ASCII_ALPHANUMERIC | "_") }
-  func_arg = { name ~ ":" ~ type }
+fn = { fn_kw ~ name
+     ~ "(" ~ (fn_arg ~ ",")* ~ fn_arg? ~ ")"
+     ~ "->" ~ type
+     ~ expr_blk }
+  fn_kw = @{ "fn" ~ !(ASCII_ALPHANUMERIC | "_") }
+  fn_arg = { name ~ ":" ~ type }
 
 /// A type.
 type = { type_stream? ~ type_vector? ~ type_option? ~ type_scalar }
@@ -36,21 +36,25 @@ stmt = { stmt_let }
 /// An arbitrary expression.
 expr = { expr_unit ~ (op_bin ~ expr_unit)* }
   /// An indivisible expression.
-  expr_unit = { op_pre* ~ atom ~ op_suf* }
+  expr_unit = { op_pre* ~ expr_sufs }
+  /// An indivisible expression without prefixes.
+  expr_sufs = { atom ~ op_suf* }
 
 /// An atomic expression.
 atom = { expr_int | expr_cst | expr_var | expr_blk | "(" ~ expr ~ ")" }
   /// An integer literal expression.
   expr_int = @{ ASCII_DIGIT+ }
   /// A cast expression.
-  expr_cst = { "(" ~ type ~ ")" ~ atom  }
+  expr_cst = { "(" ~ type ~ ")" ~ expr_unit }
   /// A variable reference expression.
   expr_var = { name }
   /// A block expression.
   expr_blk = { "{" ~ (stmt ~ ";")* ~ expr ~ "}" }
 
 /// A prefix operator.
-op_pre   = { op_not }
+op_pre   = { op_neg | op_not }
+  /// An integer negation operator.
+  op_neg = { "-" }
   /// A logical NOT operator.
   op_not = { "~" }
 
