@@ -6,14 +6,8 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.4.5", features = ["derive"] }
 egg = "0.9.5"
-hashbrown = { version = "0.14.2", features = ["raw"] }
 num-bigint = "0.4.4"
 pest = "2.7.4"
 pest_derive = "2.7.4"
 thiserror = "1.0.48"
 unionfind = "0.2.1"
-
-[dependencies.rustc-hash]
-version = "1.1.0"
-default-features = false
-features = ["std"]

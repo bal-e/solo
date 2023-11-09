@@ -5,6 +5,7 @@ use core::num::NonZeroU32;
 use std::rc::Rc;
 
 use num_bigint::BigInt;
+use thiserror::Error;
 
 use crate::ast::{UnaOp, BinOp};
 
@@ -40,7 +41,7 @@ pub struct Variable {
 }
 
 /// A type.
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Type {
     /// The stream component of the type.
     pub stream: Option<StreamPart>,
@@ -53,22 +54,22 @@ pub struct Type {
 }
 
 /// The stream component of a type.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct StreamPart {}
 
 /// The vector component of a type.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct VectorPart {
     /// The number of elements in each vector.
     size: u32,
 }
 
 /// The option component of a type.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct OptionPart {}
 
 /// A scalar type.
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum ScalarType {
     /// An arbitrary (unknown) type.
     Any,
@@ -78,7 +79,7 @@ pub enum ScalarType {
 }
 
 /// An integer type.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct IntType {
     /// The sign of the integer type.
     pub sign: IntSign,
@@ -88,7 +89,7 @@ pub struct IntType {
 }
 
 /// The sign of an integer type.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum IntSign {
     /// An unsigned integer type.
     U,
@@ -97,7 +98,7 @@ pub enum IntSign {
 }
 
 /// The size of an integer type.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct IntSize {
     /// The number of bits.
     pub bits: NonZeroU32,
@@ -149,3 +150,16 @@ pub struct Typed<T> {
     /// The associated type.
     pub r#type: Type,
 }
+
+/// A type-checking error.
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("A type logic error occurred: {0}")]
+    Logic(#[from] logic::Error),
+
+    #[error("An expression's type could not be resolved")]
+    Unresolvable,
+}
+
+/// A type-checking result.
+pub type Result<T> = core::result::Result<T, Error>;

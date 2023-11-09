@@ -69,7 +69,7 @@ pub struct Variable {
 }
 
 /// A type.
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Type {
     /// The underlying scalar type.
     pub scalar: ScalarType,
@@ -82,14 +82,14 @@ pub struct Type {
 }
 
 /// A scalar type.
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum ScalarType {
     /// An integer type.
     Int(IntType),
 }
 
 /// An integer type.
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum IntType {
     /// An unsigned integer type.
     U(NonZeroU32),

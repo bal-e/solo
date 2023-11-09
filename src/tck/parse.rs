@@ -1,83 +1,410 @@
-/// Storage for type-checking.
-pub struct Storage<'ast> {
-    /// Storage for the underlying AST.
-    ast: &'ast ast::Storage<'ast>,
+use std::rc::Rc;
 
-    /// The type of every expression in the AST.
-    ///
-    /// If an expression is unresolved, [`None`] is stored; if the scalar part
-    /// of the expression is unresolved, then the union-find should be used to
-    /// resolve it.
-    ///
-    /// The indices here correspond to the IDs of the stored expressions whose
-    /// types are being inferred.
-    types: Vec<Option<MapType>>,
+use unionfind::HashUnionFindByRank;
+
+use crate::ast::{self, UnaOp, BinOp};
+use super::*;
+
+/// Storage for type-checking.
+struct Storage {
+    /// The type-checked version of every AST variable.
+    names: HashMap<*const ast::Variable, Rc<Variable>>,
+
+    /// The type of every variable in the AST.
+    varts: HashMap<*const Variable, Type>,
 
     /// A union-find structure for equating scalar types.
     ///
-    /// The elements / IDs here correspond to the IDs of the stored expressions
-    /// whose types are being inferred.
-    tvars: VecUnionFindByRank<usize>,
+    /// This structure groups together variables whose types have identical
+    /// scalar components, allowing unknown types to be resolved.
+    tvars: HashUnionFindByRank<*const Variable>,
 }
 
-impl<'ast> Storage<'ast> {
-    /// Construct a new [`Storage`].
-    pub fn new(ast: &'ast ast::Storage<'ast>) -> Self {
-        Self {
-            ast,
-            types: Vec::new(),
-            tvars: VecUnionFindByRank::new([]).unwrap(),
-        }
-    }
-
+impl Storage {
     /// Type-check the given function.
-    ///
-    /// Once type-checked, the type of every expression in the function will be
-    /// resolved, and can be retrieved using [`Storage::get_expr_type()`].
-    pub fn tck_fn(&mut self, r#fn: &'ast Stored<ast::Fn<'ast>>) -> Result<()> {
-        // Extend the type arrays to fit all possible expressions.
-        (self.types.len() .. self.ast.exprs.num())
-            .for_each(|index| self.tvars.add(index).unwrap());
-        self.types.resize(self.ast.exprs.num(), None);
+    fn tck_fn(&mut self, r#fn: &ast::Function) -> Result<Function> {
+        let name = r#fn.name.clone();
 
-        // Resolve the type of every function argument.
-        for arg in r#fn.args {
-            self.types[usize::from(arg.expr.id())] = Some(arg.r#type.into());
-        }
+        let args = r#fn.args.iter()
+            // Prepare the type-checked version of the variable.
+            .map(|arg| (arg, Variable {
+                name: arg.variable.name.clone(),
+                expr: Typed {
+                    data: Expr::Arg,
+                    r#type: arg.r#type.clone().into(),
+                },
+            }))
+            .map(|(arg, var)| (arg, Rc::new(var)))
+            // Update type-checker state with the new variable.
+            .inspect(|(arg, var)| {
+                let arg_id = Rc::as_ptr(arg.variable);
+                let var_id = Rc::as_ptr(var);
+                self.names.insert(arg_id, var.clone());
+                self.varts.insert(var_id, var.r#type);
+                self.tvars.add(var_id).unwrap();
+            })
+            .map(|(_, variable)| Argument { variable })
+            .collect();
 
-        // Resolve the function body.
-        let rett = self.tck_expr(r#fn.body, Type::Any)?;
-        if !rett.is_subtype_of(&r#fn.rett.into()) {
-            return Err(logic::Error::Subtype.into());
-        }
+        let rett = r#fn.rett.into();
 
-        Ok(())
+        let body = self.tck_expr(&r#fn.body, rett.scalar)?;
+
+        Ok(Function { name, args, rett, body })
     }
 
     /// Type-check a statement.
-    fn tck_stmt(
-        &mut self,
-        stmt: &'ast Stored<ast::Stmt<'ast>>,
-    ) -> Result<()> {
-        match **stmt {
-            ast::Stmt::Let(_, e) => {
-                self.tck_expr(e, Type::Any)?;
+    fn tck_stmt(&mut self, stmt: &ast::Stmt) -> Result<Stmt> {
+        match stmt {
+            ast::Stmt::Let(old) => {
+                let new = Rc::new(Variable {
+                    name: old.name.clone(),
+                    expr: self.tck_expr(&old.expr, Type::Any)?,
+                });
+                let old_id = Rc::as_ptr(old);
+                let new_id = Rc::as_ptr(new);
+                self.names.insert(old_id, new.clone());
+                self.varts.insert(new_id, var.expr.r#type);
+                self.tvars.add(new_id).unwrap();
+                Ok(Stmt::Let(new))
             },
         }
 
         Ok(())
     }
 
-    /// Type-check a specific expression.
+    /// Type-check an expression.
     ///
     /// Given a type the expression's scalar type must be a subtype of, the
     /// expression's type is resolved and returned.  Note that the type might
     /// not be fully resolved.
     fn tck_expr(
         &mut self,
-        expr: &'ast Stored<ast::Expr<'ast>>,
-        sup: Type,
-    ) -> Result<MapType> {
+        expr: &ast::Expr,
+        sup: ScalarType,
+    ) -> Result<(Typed<Expr>, Option<Rc<Variable>>)> {
+        Ok(match expr {
+            ast::Expr::Una(op, x) => {
+                let x_sup = self.tck_una_sup(sup)?;
+                let (x, xv) = self.tck_expr(x, x_sup)?;
+                let o = self.tck_una_res(op, sup, x.r#type)?;
+                let v = self.tck_una_var(op, xv);
+                (Typed { data: Expr::Una(op, x), r#type: o }, v)
+            },
+
+            ast::Expr::Bin(op, [l, r]) => {
+                let [l_sup, r_sup] = self.tck_bin_sup(op, sup)?;
+                let (l, lv) = self.tck_expr(l, l_sup)?;
+                let (r, rv) = self.tck_expr(r, r_sup)?;
+                let o = self.tck_bin_res(op, sup, l.r#type, r.r#type)?;
+                let v = self.tck_bin_var(op, lv, rv);
+                (Typed {
+                    data: Expr::Bin(op, [l, r].map(Box::new)),
+                    r#type: o,
+                }, v)
+            },
+
+            ast::Expr::Par(x) => self.tck_expr(x, sup),
+
+            ast::Expr::Cast(t, x) => {
+                let (x, _) = self.tck_expr(x, Type::Any)?;
+                let t = Type::from(t);
+
+                // Ensure that the output type fits the supertype.
+                if !t.scalar.is_subtype_of(&sup) {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                // It is not possible to cast from or into an option.
+                if x.r#type.option.is_some() || t.option.is_some() {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                // It is not possible to cast from or into a stream.
+                if t.stream.is_some() || t.vector.is_some() {
+                    if x.r#type.stream.is_some() != t.stream.is_some() {
+                        return Err(logic::Error::Subtype.into());
+                    }
+                }
+
+                (Typed { data: x.data, r#type: t }, None)
+            },
+
+            ast::Expr::Int(n) => {
+                // Ensure that an integer is allowed here.
+                if !Type::Int(IntType::Any).is_subtype_of(&sup) {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                Typed {
+                    data: Expr::Int(n),
+                    r#type: Type {
+                        scalar: Type::Int(IntType::Any),
+                        option: None,
+                        vector: None,
+                        stream: None,
+                    },
+                }
+            },
+
+            ast::Expr::Var(v) => {
+                // Resolve the expression node.
+                let v = self.names.get(&Rc::as_ptr(v)).unwrap().clone();
+                let x = self.tvars.find_shorten(&Rc::as_ptr(v)).unwrap();
+
+                // Infer the underlying type value.
+                let mut xt = self.types.get(&x).unwrap();
+                xt.scalar = xt.scalar.infer_min(sup)?;
+                self.types.insert(x, xt);
+
+                Typed { data: Expr::Var(v), r#type: xt }
+            },
+
+            // 'Arg' is only possible within function argument definitions,
+            // which are never visited by this function.
+            ast::Expr::Arg(_) => unreachable!(),
+
+            ast::Expr::Blk { stmts, rexpr } => {
+                for stmt in stmts {
+                    self.tck_stmt(stmt)?;
+                }
+
+                self.tck_expr(rexpr, sup)?
+            },
+        })
+    }
+
+    fn tck_una_sup(
+        &mut self,
+        op: UnaOp,
+        sup: ScalarType,
+    ) -> Result<ScalarType> {
+        match op {
+            UnaOp::Neg => ScalarType::merge_min(ScalarType::Int(None), sup),
+            UnaOp::Not => ScalarType::merge_min(ScalarType::Int(None), sup),
+        }
+    }
+
+    fn tck_una_res(
+        &mut self,
+        op: UnaOp,
+        x: Type,
+    ) -> Result<Type> {
+        match op {
+            UnaOp::Neg => Ok(x),
+            UnaOp::Not => Ok(x),
+        }
+    }
+
+    fn tck_una_var(
+        &mut self,
+        op: UnaOp,
+        x: Option<Rc<Variable>>,
+    ) -> Option<Rc<Variable>> {
+        match op {
+            UnaOp::Neg => x,
+            UnaOp::Not => x,
+        }
+    }
+
+    fn tck_bin_sup(
+        &mut self,
+        op: BinOp,
+        sup: ScalarType,
+    ) -> Result<[ScalarType; 2]> {
+        Ok(match op {
+            BinOp::Add | BinOp::Sub
+                | BinOp::Mul | BinOp::Div | BinOp::Rem
+                | UnaOp::And | UnaOp::IOr | UnaOp::XOr
+                | UnaOp::ShL | UnaOp::ShR =>
+                [ScalarType::merge_min(ScalarType::Int(None), sup)?; 2],
+
+            BinOp::Cat => [sup; 2],
+            BinOp::Ind => [sup, ScalarType::Int(None)],
+            BinOp::Exp => [sup, ScalarType::Int(None)],
+            BinOp::Red => [sup, ScalarType::Int(None)],
+
+            BinOp::Cmp(_) => [ScalarType::Any; 2],
+
+            BinOp::Cond => [ScalarType::Int(None), sup],
+            BinOp::Else => [sup; 2],
+        })
+    }
+
+    fn tck_bin_res(
+        &mut self,
+        op: BinOp,
+        lhs: Type,
+        rhs: Type,
+    ) -> Result<Type> {
+        Ok(match op {
+            BinOp::Add | BinOp::Sub
+                | BinOp::Mul | BinOp::Div | BinOp::Rem
+                | UnaOp::And | UnaOp::IOr | UnaOp::XOr
+                | UnaOp::ShL | UnaOp::ShR =>
+                Type::merge_max(lhs, rhs)?,
+
+            BinOp::Cat => Type {
+                stream: Subtyping::merge_max(lhs.stream, rhs.stream)?,
+                vector: Some(VectorPart {
+                    size: [lhs, rhs].into_iter()
+                        .map(|x| x.vector.map_or(1, |x| x.size))
+                        .sum(),
+                }),
+                option: Subtyping::merge_max(lhs.option, rhs.option)?,
+                scalar: Subtyping::merge_max(lhs.scalar, rhs.scalar)?,
+            },
+
+            BinOp::Ind => {
+                if lhs.vector.is_none() {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                Type {
+                    stream: Subtyping::merge_max(lhs.stream, rhs.stream)?,
+                    vector: rhs.vector,
+                    option: Subtyping::merge_max(lhs.option, rhs.option)?,
+                    scalar: lhs.scalar,
+                }
+            },
+
+            BinOp::Exp => {
+                if rhs.stream.is_none() {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                Type {
+                    stream: rhs.stream,
+                    vector: VectorSize::merge_max(lhs.vector, rhs.vector)?,
+                    option: Some(OptionPart {}),
+                    scalar: lhs.scalar,
+                }
+            },
+
+            BinOp::Red => {
+                if lhs.stream.is_none() || rhs.stream.is_none() {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                if rhs.option.is_some() {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                Type {
+                    stream: Some(StreamPart {}),
+                    vector: Subtyping::merge_max(lhs.vector, rhs.vector)?,
+                    option: lhs.option,
+                    scalar: lhs.scalar,
+                }
+            },
+
+            BinOp::Cmp(_) => Type {
+                stream: Subtyping::merge_max(lhs.stream, rhs.stream)?,
+                vector: Subtyping::merge_max(lhs.vector, rhs.vector)?,
+                option: Subtyping::merge_max(lhs.option, rhs.option)?,
+                scalar: ScalarType::Int(Some(IntType {
+                    sign: IntSign::U,
+                    size: NonZeroU32::MIN,
+                })),
+            },
+
+            BinOp::Cond => Type {
+                stream: Subtyping::merge_max(lhs.stream, rhs.stream)?,
+                vector: Subtyping::merge_max(lhs.vector, rhs.vector)?,
+                option: Some(OptionPart {}),
+                scalar: rhs.scalar,
+            },
+
+            BinOp::Else => {
+                if lhs.option.is_none() {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                Type {
+                    stream: Subtyping::merge_max(lhs.stream, rhs.stream)?,
+                    vector: Subtyping::merge_max(lhs.vector, rhs.vector)?,
+                    option: rhs.option,
+                    scalar: Subtyping::merge_max(lhs.scalar, rhs.scalar)?,
+                }
+            },
+        })
+    }
+
+    fn tck_bin_var(
+        &mut self,
+        op: BinOp,
+        lhs: Option<Rc<Variable>>,
+        rhs: Option<Rc<Variable>>,
+    ) -> Result<Option<Rc<Variable>>> {
+        let union = |lhs, rhs| {
+            let [lhs, rhs] = [lhs?, rhs?].map(Rc::as_ptr);
+            self.tvars.union_by_rank(&lhs, &rhs).unwrap();
+
+        };
+
+        Ok(match op {
+            BinOp::Add | BinOp::Sub
+                | BinOp::Mul | BinOp::Div | BinOp::Rem
+                | UnaOp::And | UnaOp::IOr | UnaOp::XOr
+                | UnaOp::ShL | UnaOp::ShR =>
+                Type::merge_max(lhs, rhs)?,
+
+            BinOp::Cat => Type {
+                stream: Subtyping::merge_max(lhs.stream, rhs.stream)?,
+                vector: Some(VectorPart {
+                    size: [lhs, rhs].into_iter()
+                        .map(|x| x.vector.map_or(1, |x| x.size))
+                        .sum(),
+                }),
+                option: Subtyping::merge_max(lhs.option, rhs.option)?,
+                scalar: Subtyping::merge_max(lhs.scalar, rhs.scalar)?,
+            },
+
+            BinOp::Ind => {
+                if lhs.vector.is_none() {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                Type {
+                    stream: Subtyping::merge_max(lhs.stream, rhs.stream)?,
+                    vector: rhs.vector,
+                    option: Subtyping::merge_max(lhs.option, rhs.option)?,
+                    scalar: lhs.scalar,
+                }
+            },
+
+            BinOp::Exp => {
+                if rhs.stream.is_none() {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                Type {
+                    stream: rhs.stream,
+                    vector: VectorSize::merge_max(lhs.vector, rhs.vector)?,
+                    option: Some(OptionPart {}),
+                    scalar: lhs.scalar,
+                }
+            },
+
+            BinOp::Red => lhs,
+            BinOp::Cmp(_) => None,
+            BinOp::Cond => rhs,
+
+            BinOp::Else => {
+                if lhs.option.is_none() {
+                    return Err(logic::Error::Subtype.into());
+                }
+
+                Type {
+                    stream: Subtyping::merge_max(lhs.stream, rhs.stream)?,
+                    vector: Subtyping::merge_max(lhs.vector, rhs.vector)?,
+                    option: rhs.option,
+                    scalar: Subtyping::merge_max(lhs.scalar, rhs.scalar)?,
+                }
+            },
+        })
+    }
+
         let r#type = match **expr {
             ast::Expr::Not(x) => {
                 // Resolve the sub-expression.
@@ -345,27 +672,6 @@ impl<'ast> Storage<'ast> {
         Ok(xt)
     }
 
-    /// Infer the type of an expression from a supertype.
-    fn infer_expr(
-        &mut self,
-        expr: ID<ast::Expr<'ast>>,
-        sup: Type,
-    ) -> Result<MapType> {
-        let expr = usize::from(expr);
-
-        // Resolve the expression node.
-        let x = self.tvars.find_shorten(&expr).unwrap();
-
-        // Infer the underlying type value.
-        let mut xt = self.types[x].unwrap();
-        xt.scalar = xt.scalar.infer_min(sup)?;
-
-        // Update the type to use the merged result.
-        self.types[x] = Some(xt);
-
-        Ok(xt)
-    }
-
     /// Get the type of an expression.
     ///
     /// The function containing the expression must have already been resolved
@@ -375,16 +681,3 @@ impl<'ast> Storage<'ast> {
         self.types[expr].unwrap()
     }
 }
-
-/// A type-checking error.
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("A type logic error occurred: {0}")]
-    Logic(#[from] logic::Error),
-
-    #[error("An expression's type could not be resolved")]
-    Unresolvable,
-}
-
-/// A type-checking result.
-pub type Result<T> = std::result::Result<T, Error>;
