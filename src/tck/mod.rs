@@ -384,8 +384,8 @@ impl<'ast> Storage<'ast> {
     ///
     /// The function containing the expression must have already been resolved
     /// using [`Storage::tck_fn()`].
-    pub fn get_expr_type(&mut self, expr: ID<ast::Expr<'ast>>) -> MapType {
-        let expr = self.tvars.find_shorten(&usize::from(expr)).unwrap();
+    pub fn get_expr_type(&self, expr: ID<ast::Expr<'ast>>) -> MapType {
+        let expr = self.tvars.find(&usize::from(expr)).unwrap();
         self.types[expr].unwrap()
     }
 }

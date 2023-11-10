@@ -1,84 +1,4 @@
-//! The Medium Intermediary Representation (MIR).
-
-use num_bigint::BigInt;
-
-use crate::{ast, tck::{self, logic::MapType}};
-use crate::storage::*;
-
-/// Storage for the MIR.
-struct Storage<'mir> {
-    /// Single operations.
-    singles: ObjectStorage<SingleInst<'mir>>,
-
-    /// Streaming operations.
-    streams: ObjectStorage<StreamInst<'mir>>,
-}
-
-/// A reference to an arbitrary operation.
-enum InstRef<'mir> {
-    Single(&'mir Stored<SingleInst<'mir>>),
-    Stream(&'mir Stored<StreamInst<'mir>>),
-}
-
-/// A single operation.
-enum SingleInst<'mir> {
-    /// A unary scalar operation.
-    Una(ScalarUnaOp, &'mir Stored<Self>),
-    /// A binary scalar operation.
-    Bin(ScalarBinOp, [&'mir Stored<Self>; 2]),
-    /// An integer literal.
-    Int(BigInt),
-    /// A function argument.
-    Arg,
-}
-
-/// A streaming operation.
-enum StreamInst<'mir> {
-    /// The streamed result of a single operation.
-    Map(&'mir Stored<SingleInst<'mir>>),
-    /// A unary streaming operation.
-    Una(ScalarUnaOp, &'mir Stored<Self>),
-    /// A binary streaming operation.
-    Bin(ScalarBinOp, [&'mir Stored<Self>; 2]),
-}
-
-/// A unary scalar operation.
-enum ScalarUnaOp {
-    Not,
-
-    /// Add a vector component.
-    Vec(u32),
-    /// Add an option component.
-    Opt,
-}
-
-/// A binary scalar operation.
-enum ScalarBinOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
-
-    And,
-    IOr,
-    XOr,
-    ShL,
-    ShR,
-
-    Cat,
-    Ind,
-
-    IsEq,
-    IsNE,
-    IsLT,
-    IsLE,
-    IsGT,
-    IsGE,
-
-    Cond,
-    Else,
-}
+use super::*;
 
 struct Parser<'ast, 'tck, 'mir> {
     /// Storage for the AST.
@@ -98,8 +18,21 @@ struct Parser<'ast, 'tck, 'mir> {
 }
 
 impl<'ast, 'tck, 'mir> Parser<'ast, 'tck, 'mir> {
+    /// Construct a new [`Parser`].
+    pub fn new(
+        ast: &'ast ast::Storage<'ast>,
+        tck: &'ast tck::Storage<'ast>,
+        mir: &'mir Storage<'mir>,
+    ) -> Self {
+        Self {
+            ast, tck, mir,
+            to_singles: Vec::new(),
+            to_streams: Vec::new(),
+        }
+    }
+
     /// Parse the given function.
-    fn parse_fn(
+    pub fn parse_fn(
         &mut self,
         r#fn: &'ast Stored<ast::Fn<'ast>>,
     ) -> InstRef<'mir> {
@@ -454,89 +387,4 @@ impl<'ast, 'tck, 'mir> Parser<'ast, 'tck, 'mir> {
             _ => todo!(),
         }
     }
-}
-
-impl<'mir> Storage<'mir> {
-    /// Print the given function.
-    fn print_fn<'ast>(&mut self, r#fn: &'ast Stored<ast::Fn<'ast>>) {
-        print!("declare ");
-        self.print_ffi_type(r#fn.rett);
-        print!(" @{} (", r#fn.name);
-        for (i, arg) in r#fn.args.into_iter().enumerate() {
-            if i != 0 {
-                print!(", ");
-            }
-
-            self.print_ffi_type(arg.r#type);
-            print!(" %{}", usize::from(arg.expr.id()));
-        }
-        print!(")");
-
-        println!();
-    }
-
-    /// Print the given type for FFI.
-    fn print_ffi_type(&mut self, r#type: ast::Type) {
-        if r#type.stream {
-            if r#type.option {
-                // Track the mask separately.
-                print!("{{ i64, ptr, ptr }}");
-            } else {
-                // Just count the number of elements.
-                print!("{{ i64, ptr }}");
-            }
-        } else if let Some(size) = r#type.vector {
-            if r#type.option {
-                print!("{{ [{} x ", size);
-                self.print_ffi_scalar_type(r#type.scalar);
-                print!("], [{} x i1] }}", size);
-            } else {
-                print!("[{} x ", size);
-                self.print_ffi_scalar_type(r#type.scalar);
-                print!("]");
-            }
-        } else if r#type.option {
-            print!("{{ ");
-            self.print_ffi_scalar_type(r#type.scalar);
-            print!(", i1 }}");
-        } else {
-            self.print_ffi_scalar_type(r#type.scalar);
-        }
-    }
-
-    /// Print the given scalar type for FFI.
-    fn print_ffi_scalar_type(&mut self, r#type: ast::ScalarType) {
-        match r#type {
-            ast::ScalarType::Int(t) => self.print_ffi_int_type(t),
-        }
-    }
-
-    /// Print the given integer type for FFI.
-    fn print_ffi_int_type(&mut self, r#type: ast::IntType) {
-        match r#type {
-            ast::IntType::U(s) => print!("i{}", s),
-            ast::IntType::S(s) => print!("i{}", s),
-        }
-    }
-}
-
-/// Consume the given function.
-pub fn consume<'ast, 'tck>(
-    ast: &'ast ast::Storage<'ast>,
-    tck: &'tck mut tck::Storage<'ast>,
-    r#fn: &'ast Stored<ast::Fn<'ast>>,
-) {
-    let storage = Storage {
-        singles: ObjectStorage::new(),
-        streams: ObjectStorage::new(),
-    };
-    let mut parser = Parser {
-        ast,
-        tck,
-        mir: &storage,
-        to_singles: Vec::new(),
-        to_streams: Vec::new(),
-    };
-
-    let _ = parser.parse_fn(r#fn);
 }
