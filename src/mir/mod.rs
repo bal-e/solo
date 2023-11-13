@@ -7,4 +7,3 @@
 //! means to describe these loops and optimize code around them.
 
 pub mod ops;
-use ops::*;

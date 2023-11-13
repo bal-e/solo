@@ -5,7 +5,9 @@
 //! are inserted wherever a broadcast is necessary.  MIR operations are typed so
 //! that enough information is available to perform code generation.
 
-use crate::tck::*;
+use core::num::NonZeroU32;
+
+use crate::types::*;
 
 /// A singular binary operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -111,11 +113,11 @@ impl VectorBinOp {
     pub fn lhs_type(self) -> VectorType {
         match self {
             Self::Map { bop, map } =>
-                VectorType::new(bop.lhs_type(), map),
+                VectorType { part: map, data: bop.lhs_type() },
             Self::Cat { src, lhs, rhs: _ } =>
-                VectorType::new(src, Some(lhs)),
+                VectorType { part: Some(lhs), data: src },
             Self::Ind { lhs, rhs: _ } =>
-                VectorType::new(lhs.1, Some(lhs.0)),
+                VectorType { part: Some(lhs.0), data: lhs.1 },
         }
     }
 
@@ -123,9 +125,9 @@ impl VectorBinOp {
     pub fn rhs_type(self) -> VectorType {
         match self {
             Self::Map { bop, map } =>
-                VectorType::new(bop.rhs_type(), map),
+                VectorType { part: map, data: bop.rhs_type() },
             Self::Cat { src, lhs: _, rhs } =>
-                VectorType::new(src, Some(rhs)),
+                VectorType { part: Some(rhs), data: src },
             Self::Ind { lhs: _, rhs } => rhs,
         }
     }
@@ -134,19 +136,20 @@ impl VectorBinOp {
     pub fn dst_type(self) -> VectorType {
         match self {
             Self::Map { bop, map } =>
-                VectorType::new(bop.dst_type(), map),
+                VectorType { part: map, data: bop.dst_type() },
             Self::Cat { src, lhs, rhs } => {
-                let part = VectorPart::new(lhs.size + rhs.size);
-                VectorType::new(src, Some(part))
+                let part = VectorPart { size: lhs.size + rhs.size };
+                VectorType { part: Some(part), data: src }
             },
             Self::Ind { lhs: (_, lhs_option), rhs } =>
-                VectorType::new(
-                    OptionType::new(
-                        lhs_option.scalar,
-                        Subtyping::merge_max(lhs_option.part, rhs.option.part)
-                            .unwrap()),
-                    rhs.part),
-
+                VectorType {
+                    part: rhs.part,
+                    data: OptionType {
+                        part: lhs_option.part.zip(rhs.data.part)
+                            .map(|(OptionPart {}, OptionPart {})| OptionPart {}),
+                        data: lhs_option.data,
+                    },
+                },
         }
     }
 }
@@ -177,16 +180,16 @@ impl VectorUnaOp {
     /// The source type.
     pub fn src_type(self) -> VectorType {
         match self {
-            Self::Map { uop, map } => VectorType::new(uop.src_type(), map),
-            Self::New { src, map: _ } => VectorType::new(src, None),
+            Self::Map { uop, map } => VectorType { part: map, data: uop.src_type() },
+            Self::New { src, map: _ } => VectorType { part: None, data: src },
         }
     }
 
     /// The destination type.
     pub fn dst_type(self) -> VectorType {
         match self {
-            Self::Map { uop, map } => ScalarType::new(uop.dst_type(), map),
-            Self::New { src, map } => ScalarType::new(src, Some(map)),
+            Self::Map { uop, map } => VectorType { part: map, data: uop.dst_type() },
+            Self::New { src, map } => VectorType { part: Some(map), data: src },
         }
     }
 }
@@ -224,14 +227,17 @@ impl OptionBinOp {
     pub fn lhs_type(self) -> OptionType {
         match self {
             Self::Map { bop, map } =>
-                OptionType::new(bop.lhs_type(), map),
+                OptionType { part: map, data: bop.lhs_type() },
             Self::Cond { rhs: _ } =>
-                ScalarType::Int(IntType {
-                    sign: IntSign::U,
-                    size: IntSize::new(1),
-                }),
+                OptionType {
+                    part: None,
+                    data: ScalarType::Int(IntType {
+                        sign: IntSign::U,
+                        size: NonZeroU32::new(1).unwrap(),
+                    }),
+                },
             Self::Else { src, rhs: _ } =>
-                OptionType::new(src, Some(OptionPart {})),
+                OptionType { part: Some(OptionPart {}), data: src },
         }
     }
 
@@ -239,11 +245,11 @@ impl OptionBinOp {
     pub fn rhs_type(self) -> OptionType {
         match self {
             Self::Map { bop, map } =>
-                OptionType::new(bop.rhs_type(), map),
+                OptionType { part: map, data: bop.rhs_type() },
             Self::Cond { rhs } =>
-                OptionType::new(rhs, Some(OptionPart {})),
+                OptionType { part: Some(OptionPart {}), data: rhs },
             Self::Else { src, rhs } =>
-                OptionType::new(src, rhs),
+                OptionType { part: rhs, data: src },
         }
     }
 
@@ -251,11 +257,11 @@ impl OptionBinOp {
     pub fn dst_type(self) -> OptionType {
         match self {
             Self::Map { bop, map } =>
-                OptionType::new(bop.dst_type(), map),
+                OptionType { part: map, data: bop.dst_type() },
             Self::Cond { rhs } =>
-                OptionType::new(rhs, Some(OptionPart {})),
+                OptionType { part: Some(OptionPart {}), data: rhs },
             Self::Else { src, rhs } =>
-                OptionType::new(src, rhs),
+                OptionType { part: rhs, data: src },
         }
     }
 }
@@ -286,16 +292,16 @@ impl OptionUnaOp {
     /// The source type.
     pub fn src_type(self) -> OptionType {
         match self {
-            Self::Map { uop, map } => OptionType::new(uop.src_type(), map),
-            Self::New { src, map: _ } => OptionType::new(src, None),
+            Self::Map { uop, map } => OptionType { part: map, data: uop.src_type() },
+            Self::New { src, map: _ } => OptionType { part: None, data: src },
         }
     }
 
     /// The destination type.
     pub fn dst_type(self) -> OptionType {
         match self {
-            Self::Map { uop, map } => OptionType::new(uop.dst_type(), map),
-            Self::New { src, map } => OptionType::new(src, Some(map)),
+            Self::Map { uop, map } => OptionType { part: map, data: uop.dst_type() },
+            Self::New { src, map } => OptionType { part: Some(map), data: src },
         }
     }
 }
@@ -361,7 +367,7 @@ impl ScalarBinOp {
             Self::Sep { bop: ScalarSepBinOp::ShR, lhs, rhs: _ } => lhs,
             Self::Cmp { bop: _, map: _ } => ScalarType::Int(IntType {
                 sign: IntSign::U,
-                size: IntSize::new(1),
+                size: NonZeroU32::new(1).unwrap(),
             }),
         }
     }
