@@ -14,3 +14,8 @@ symbol_table = "0.3.0"
 thiserror = "1.0.48"
 typed-arena = "2.0.2"
 unionfind = "0.2.1"
+
+[dependencies.inkwell]
+git = "https://github.com/TheDan64/inkwell"
+branch = "master"
+features = ["llvm16-0"]

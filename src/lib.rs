@@ -1,3 +1,4 @@
+#![feature(array_try_map)]
 #![feature(try_trait_v2)]
 #![feature(try_trait_v2_residual)]
 
