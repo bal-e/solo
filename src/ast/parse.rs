@@ -80,6 +80,10 @@ impl Parser {
         // Begin function scope.
         self.scopes.push(FxHashMap::default());
 
+        let variable_id_beg = self.variable_ids.start;
+        let stmt_id_beg = self.stmt_ids.start;
+        let expr_id_beg = self.expr_ids.start;
+
         let mut pairs = input.into_inner().peekable();
         assert_eq!(Rule::fn_kw, pairs.next().unwrap().as_rule());
         let name = self.parse_name(pairs.next().unwrap());
@@ -91,10 +95,21 @@ impl Parser {
         let body = self.parse_expr_blk(pairs.next().unwrap())?;
         let body = Box::new(self.store_expr(body));
 
+        let variable_id_end = self.variable_ids.start;
+        let stmt_id_end = self.stmt_ids.start;
+        let expr_id_end = self.expr_ids.start;
+
         // End function scope.
         self.scopes.pop();
 
-        Ok(Function { name, args, rett, body })
+        let variable_ids = variable_id_beg .. variable_id_end;
+        let stmt_ids = stmt_id_beg .. stmt_id_end;
+        let expr_ids = expr_id_beg .. expr_id_end;
+
+        Ok(Function {
+            name, args, rett, body,
+            variable_ids, stmt_ids, expr_ids,
+        })
     }
 
     /// Parse a function argument.

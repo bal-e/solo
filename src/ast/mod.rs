@@ -2,8 +2,8 @@
 
 use std::num::NonZeroU32;
 use std::path::PathBuf;
+use std::ops::{Deref, DerefMut, Range};
 use std::rc::Rc;
-use std::ops::{Deref, DerefMut};
 
 use num_bigint::BigInt;
 
@@ -53,6 +53,15 @@ pub struct Function {
 
     /// The function body.
     pub body: Box<Stored<Expr>>,
+
+    /// The IDs of variables.
+    pub variable_ids: Range<u32>,
+
+    /// The IDs of statements.
+    pub stmt_ids: Range<u32>,
+
+    /// The IDs of expressions.
+    pub expr_ids: Range<u32>,
 }
 
 /// An argument to a function.
