@@ -1,199 +1,84 @@
 //! A Higher Intermediary Representation (HIR) for Solo.
 
-use core::{fmt, mem, slice};
-
-use egg::{self, Id, Language, Symbol};
+use egg::{self, Id, Language, RecExpr};
 
 use num_bigint::BigInt;
 
-pub mod opt;
-pub use opt::Optimizer;
+use crate::ops::*;
+use crate::types::*;
 
 pub mod parse;
-pub use parse::Parser;
+pub use parse::parse_fn;
 
-/// An HIR expression node.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ExprNode {
-    Not(Id),
+/// An HIR function.
+#[derive(Clone, Debug)]
+pub struct Function {
+    /// The name of the function.
+    pub name: String,
 
-    Add([Id; 2]),
-    Sub([Id; 2]),
-    Mul([Id; 2]),
-    Div([Id; 2]),
-    Rem([Id; 2]),
-
-    And([Id; 2]),
-    IOr([Id; 2]),
-    XOr([Id; 2]),
-    ShL([Id; 2]),
-    ShR([Id; 2]),
-
-    Cat([Id; 2]),
-    Ind([Id; 2]),
-    Exp([Id; 2]),
-    Red([Id; 2]),
-
-    IsEq([Id; 2]),
-    IsNE([Id; 2]),
-    IsLT([Id; 2]),
-    IsLE([Id; 2]),
-    IsGT([Id; 2]),
-    IsGE([Id; 2]),
-
-    Cond([Id; 2]),
-    Else([Id; 2]),
-
-    Int(BigInt),
-    Arg(Symbol),
+    /// The body of the function.
+    pub body: RecExpr<Node>,
 }
 
-impl Language for ExprNode {
+/// An HIR node.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Node {
+    /// A unary operation on a single.
+    SingleUna(SingleUnaOp, [Id; 1]),
+
+    /// A binary operation on singles.
+    SingleBin(SingleBinOp, [Id; 2]),
+
+    /// A collection operation on a stream.
+    SingleCol(SingleColOp, [Id; 1]),
+
+    /// A unary operation on a stream.
+    StreamUna(StreamUnaOp, [Id; 1]),
+
+    /// A binary operation on a stream.
+    StreamBin(StreamBinOp, [Id; 2]),
+
+    /// An integer literal.
+    Int(BigInt),
+
+    /// A specific function argument.
+    Arg(u32),
+}
+
+impl Language for Node {
     #[inline(always)]
     fn matches(&self, other: &Self) -> bool {
-        if mem::discriminant(self) != mem::discriminant(other) { return false };
         match (self, other) {
+            (Self::SingleUna(l, _), Self::SingleUna(r, _)) => l == r,
+            (Self::SingleBin(l, _), Self::SingleBin(r, _)) => l == r,
+            (Self::SingleCol(l, _), Self::SingleCol(r, _)) => l == r,
+            (Self::StreamUna(l, _), Self::StreamUna(r, _)) => l == r,
+            (Self::StreamBin(l, _), Self::StreamBin(r, _)) => l == r,
             (Self::Int(l), Self::Int(r)) => l == r,
             (Self::Arg(l), Self::Arg(r)) => l == r,
-
-            // We never have variable-length children, and the remaining
-            // variants only consist of 'Id's, which we aren't checking.
-            _ => true,
+            _ => false,
         }
     }
 
     fn children(&self) -> &[Id] {
         match self {
-            Self::Not(x) => slice::from_ref(x),
-
-            Self::Add(x) | Self::Sub(x) | Self::Mul(x)
-                | Self::Div(x) | Self::Rem(x) => x,
-
-            Self::And(x) | Self::IOr(x) | Self::XOr(x)
-                | Self::ShL(x) | Self::ShR(x) => x,
-
-            Self::Cat(x) => x,
-            Self::Ind(x) => x,
-            Self::Exp(x) | Self::Red(x) => x,
-
-            Self::IsEq(x) | Self::IsNE(x)
-                | Self::IsLT(x) | Self::IsLE(x)
-                | Self::IsGT(x) | Self::IsGE(x) => x,
-
-            Self::Cond(x) | Self::Else(x) => x,
-
+            Self::SingleUna(_, x) => x,
+            Self::SingleBin(_, x) => x,
+            Self::SingleCol(_, x) => x,
+            Self::StreamUna(_, x) => x,
+            Self::StreamBin(_, x) => x,
             Self::Int(..) | Self::Arg(..) => &[],
         }
     }
 
     fn children_mut(&mut self) -> &mut [Id] {
         match self {
-            Self::Not(x) => slice::from_mut(x),
-
-            Self::Add(x) | Self::Sub(x) | Self::Mul(x)
-                | Self::Div(x) | Self::Rem(x) => x,
-
-            Self::And(x) | Self::IOr(x) | Self::XOr(x)
-                | Self::ShL(x) | Self::ShR(x) => x,
-
-            Self::Cat(x) => x,
-            Self::Ind(x) => x,
-            Self::Exp(x) | Self::Red(x) => x,
-
-            Self::IsEq(x) | Self::IsNE(x)
-                | Self::IsLT(x) | Self::IsLE(x)
-                | Self::IsGT(x) | Self::IsGE(x) => x,
-
-            Self::Cond(x) | Self::Else(x) => x,
-
+            Self::SingleUna(_, x) => x,
+            Self::SingleBin(_, x) => x,
+            Self::SingleCol(_, x) => x,
+            Self::StreamUna(_, x) => x,
+            Self::StreamBin(_, x) => x,
             Self::Int(..) | Self::Arg(..) => &mut [],
         }
-    }
-}
-
-impl fmt::Display for ExprNode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Not(..) => "not",
-
-            Self::Add(..) => "add",
-            Self::Sub(..) => "sub",
-            Self::Mul(..) => "mul",
-            Self::Div(..) => "div",
-            Self::Rem(..) => "rem",
-
-            Self::And(..) => "and",
-            Self::IOr(..) => "ior",
-            Self::XOr(..) => "xor",
-            Self::ShL(..) => "shl",
-            Self::ShR(..) => "shr",
-
-            Self::Cat(..) => "cat",
-            Self::Ind(..) => "ind",
-            Self::Exp(..) => "exp",
-            Self::Red(..) => "red",
-
-            Self::IsEq(..) => "iseq",
-            Self::IsNE(..) => "isne",
-            Self::IsLT(..) => "islt",
-            Self::IsLE(..) => "isle",
-            Self::IsGT(..) => "isgt",
-            Self::IsGE(..) => "isge",
-
-            Self::Cond(..) => "cond",
-            Self::Else(..) => "else",
-
-            Self::Int(v) => return fmt::Display::fmt(v, f),
-            Self::Arg(n) => return write!(f, "${}", n),
-        })
-    }
-}
-
-impl egg::FromOp for ExprNode {
-    type Error = egg::FromOpError;
-
-    fn from_op(op: &str, children: Vec<Id>) -> Result<Self, Self::Error> {
-        Ok(match (op, &*children) {
-            ("not", &[id]) => Self::Not(id),
-
-            ("add", &[lhs, rhs]) => Self::Add([lhs, rhs]),
-            ("sub", &[lhs, rhs]) => Self::Sub([lhs, rhs]),
-            ("mul", &[lhs, rhs]) => Self::Mul([lhs, rhs]),
-            ("div", &[lhs, rhs]) => Self::Div([lhs, rhs]),
-            ("rem", &[lhs, rhs]) => Self::Rem([lhs, rhs]),
-
-            ("and", &[lhs, rhs]) => Self::And([lhs, rhs]),
-            ("ior", &[lhs, rhs]) => Self::IOr([lhs, rhs]),
-            ("xor", &[lhs, rhs]) => Self::XOr([lhs, rhs]),
-            ("shl", &[lhs, rhs]) => Self::ShL([lhs, rhs]),
-            ("shr", &[lhs, rhs]) => Self::ShR([lhs, rhs]),
-
-            ("cat", &[lhs, rhs]) => Self::Cat([lhs, rhs]),
-            ("ind", &[lhs, rhs]) => Self::Ind([lhs, rhs]),
-            ("exp", &[lhs, rhs]) => Self::Exp([lhs, rhs]),
-            ("red", &[lhs, rhs]) => Self::Red([lhs, rhs]),
-
-            ("iseq", &[lhs, rhs]) => Self::IsEq([lhs, rhs]),
-            ("isne", &[lhs, rhs]) => Self::IsNE([lhs, rhs]),
-            ("islt", &[lhs, rhs]) => Self::IsLT([lhs, rhs]),
-            ("isle", &[lhs, rhs]) => Self::IsLE([lhs, rhs]),
-            ("isgt", &[lhs, rhs]) => Self::IsGT([lhs, rhs]),
-            ("isge", &[lhs, rhs]) => Self::IsGE([lhs, rhs]),
-
-            ("cond", &[lhs, rhs]) => Self::Cond([lhs, rhs]),
-            ("else", &[lhs, rhs]) => Self::Else([lhs, rhs]),
-
-            (op, &[]) => {
-                if let Some(ident) = op.strip_prefix('$') {
-                    Self::Arg(egg::Symbol::new(ident))
-                } else if let Ok(value) = op.parse::<BigInt>() {
-                    Self::Int(value)
-                } else {
-                    return Err(egg::FromOpError::new(op, children));
-                }
-            },
-
-            _ => return Err(egg::FromOpError::new(op, children)),
-        })
     }
 }
