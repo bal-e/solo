@@ -5,52 +5,68 @@ use crate::types;
 
 use super::Error;
 
-/// A mapped type.
+/// A maybe-stream type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct MappedType {
-    /// The stream part, if any.
-    pub stream: Option<StreamPart>,
-    /// The vector part, if any.
-    pub vector: Option<VectorPart>,
-    /// The option part, if any.
-    pub option: Option<OptionPart>,
-    /// The underlying scalar type.
-    pub scalar: ScalarType,
+pub struct StreamType {
+    pub part: Option<StreamPart>,
+    pub data: VectorType,
 }
 
-impl From<ast::MappedType> for MappedType {
+/// A maybe-vector type.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct VectorType {
+    pub part: Option<VectorPart>,
+    pub data: OptionType,
+}
+
+/// A maybe-option type.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct OptionType {
+    pub part: Option<OptionPart>,
+    pub data: ScalarType,
+}
+
+impl From<ast::MappedType> for StreamType {
     fn from(value: ast::MappedType) -> Self {
-        Self {
-            stream: value.stream.map(From::from),
-            vector: value.vector.map(From::from),
-            option: value.option.map(From::from),
-            scalar: value.scalar.into(),
+        StreamType {
+            part: value.stream.map(From::from),
+            data: VectorType {
+                part: value.vector.map(From::from),
+                data: OptionType {
+                    part: value.option.map(From::from),
+                    data: value.scalar.into(),
+                },
+            },
         }
     }
 }
 
-impl From<types::StreamType> for MappedType {
+impl From<types::StreamType> for StreamType {
     fn from(value: types::StreamType) -> Self {
-        Self {
-            stream: value.part.map(From::from),
-            vector: value.data.part.map(From::from),
-            option: value.data.data.part.map(From::from),
-            scalar: value.data.data.data.into(),
+        StreamType {
+            part: value.part.map(From::from),
+            data: VectorType {
+                part: value.data.part.map(From::from),
+                data: OptionType {
+                    part: value.data.data.part.map(From::from),
+                    data: value.data.data.data.into(),
+                },
+            },
         }
     }
 }
 
-impl TryFrom<MappedType> for types::StreamType {
+impl TryFrom<StreamType> for types::StreamType {
     type Error = Error;
 
-    fn try_from(value: MappedType) -> Result<Self, Self::Error> {
+    fn try_from(value: StreamType) -> Result<Self, Self::Error> {
         Ok(types::StreamType {
-            part: value.stream.map(From::from),
+            part: value.part.map(From::from),
             data: types::VectorType {
-                part: value.vector.map(From::from),
+                part: value.data.part.map(From::from),
                 data: types::OptionType {
-                    part: value.option.map(From::from),
-                    data: value.scalar.try_into()?,
+                    part: value.data.data.part.map(From::from),
+                    data: value.data.data.data.try_into()?,
                 },
             },
         })

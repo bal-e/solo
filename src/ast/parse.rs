@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use crate::src::Rule;
 
-use super::*;
+use super::{*, ops::*};
 
 /// Parse the given module.
 pub fn parse_mod(
@@ -232,32 +232,39 @@ impl Parser {
             let rhs = self.parse_expr_inner(Some(&next), input)?;
             let rhs = Box::new(self.store_expr(rhs));
 
+            let stream = |o| o;
+            let vector = |o| StreamBinOp::Map(o);
+            let option = |o| (vector)(VectorBinOp::Map(o));
+            let scalar = |o| (option)(OptionBinOp::Map(o));
+            let scalar_int = |o| (scalar)(ScalarBinOp::Int(o));
+            let scalar_cmp = |o| (scalar)(ScalarBinOp::Cmp(o));
+
             let bop = match next.into_inner().next().unwrap().as_rule() {
-                Rule::op_add => BinOp::Add,
-                Rule::op_sub => BinOp::Sub,
-                Rule::op_mul => BinOp::Mul,
-                Rule::op_div => BinOp::Div,
-                Rule::op_rem => BinOp::Rem,
+                Rule::op_add => (scalar_int)(ScalarIntBinOp::Add),
+                Rule::op_sub => (scalar_int)(ScalarIntBinOp::Sub),
+                Rule::op_mul => (scalar_int)(ScalarIntBinOp::Mul),
+                Rule::op_div => (scalar_int)(ScalarIntBinOp::Div),
+                Rule::op_rem => (scalar_int)(ScalarIntBinOp::Rem),
 
-                Rule::op_and => BinOp::And,
-                Rule::op_ior => BinOp::IOr,
-                Rule::op_xor => BinOp::XOr,
-                Rule::op_shl => BinOp::ShL,
-                Rule::op_shr => BinOp::ShR,
+                Rule::op_and => (scalar_int)(ScalarIntBinOp::And),
+                Rule::op_ior => (scalar_int)(ScalarIntBinOp::IOr),
+                Rule::op_xor => (scalar_int)(ScalarIntBinOp::XOr),
+                Rule::op_shl => (scalar_int)(ScalarIntBinOp::ShL),
+                Rule::op_shr => (scalar_int)(ScalarIntBinOp::ShR),
 
-                Rule::op_cat => BinOp::Cat,
-                Rule::op_exp => BinOp::Exp,
-                Rule::op_red => BinOp::Red,
+                Rule::op_cat => (vector)(VectorBinOp::Cat),
+                Rule::op_exp => (stream)(StreamBinOp::Exp),
+                Rule::op_red => (stream)(StreamBinOp::Red),
 
-                Rule::op_iseq => BinOp::Cmp(CmpOp::IsEq),
-                Rule::op_isne => BinOp::Cmp(CmpOp::IsNE),
-                Rule::op_islt => BinOp::Cmp(CmpOp::IsLT),
-                Rule::op_isle => BinOp::Cmp(CmpOp::IsLE),
-                Rule::op_isgt => BinOp::Cmp(CmpOp::IsGT),
-                Rule::op_isge => BinOp::Cmp(CmpOp::IsGE),
+                Rule::op_iseq => (scalar_cmp)(ScalarCmpBinOp::IsEq),
+                Rule::op_isne => (scalar_cmp)(ScalarCmpBinOp::IsNE),
+                Rule::op_islt => (scalar_cmp)(ScalarCmpBinOp::IsLT),
+                Rule::op_isle => (scalar_cmp)(ScalarCmpBinOp::IsLE),
+                Rule::op_isgt => (scalar_cmp)(ScalarCmpBinOp::IsGT),
+                Rule::op_isge => (scalar_cmp)(ScalarCmpBinOp::IsGE),
 
-                Rule::op_cond => BinOp::Cond,
-                Rule::op_else => BinOp::Else,
+                Rule::op_cond => (option)(OptionBinOp::Cond),
+                Rule::op_else => (option)(OptionBinOp::Else),
 
                 _ => unreachable!(),
             };
@@ -325,9 +332,15 @@ impl Parser {
         Ok(pairs.fold(expr, |expr, uop| {
             assert_eq!(Rule::op_pre, uop.as_rule());
             let uop = uop.into_inner().next().unwrap();
+
+            let vector = |o| StreamUnaOp::Map(o);
+            let option = |o| (vector)(VectorUnaOp::Map(o));
+            let scalar = |o| (option)(OptionUnaOp::Map(o));
+            let scalar_int = |o| (scalar)(ScalarUnaOp::Int(o));
+
             let uop = match uop.as_rule() {
-                Rule::op_neg => UnaOp::Neg,
-                Rule::op_not => UnaOp::Not,
+                Rule::op_neg => (scalar_int)(ScalarIntUnaOp::Neg),
+                Rule::op_not => (scalar_int)(ScalarIntUnaOp::Not),
                 _ => unreachable!(),
             };
 
@@ -353,7 +366,8 @@ impl Parser {
                     let ind = self.parse_expr(ind)?;
                     let lhs = Box::new(self.store_expr(expr));
                     let rhs = Box::new(self.store_expr(ind));
-                    Ok(Expr::Bin(BinOp::Ind, [lhs, rhs]))
+                    let bop = StreamBinOp::Map(VectorBinOp::Ind);
+                    Ok(Expr::Bin(bop, [lhs, rhs]))
                 },
                 _ => unreachable!(),
             }

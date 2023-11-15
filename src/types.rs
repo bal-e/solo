@@ -4,7 +4,7 @@ use core::fmt;
 use core::num::NonZeroU32;
 
 /// A stream type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamType {
     /// The stream part, if any.
     pub part: Option<StreamPart>,
@@ -22,7 +22,7 @@ impl fmt::Display for StreamType {
 }
 
 /// The stream component of a type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamPart {}
 
 impl fmt::Display for StreamPart {
@@ -32,7 +32,7 @@ impl fmt::Display for StreamPart {
 }
 
 /// A vector type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VectorType {
     /// The vector part, if any.
     pub part: Option<VectorPart>,
@@ -50,7 +50,7 @@ impl fmt::Display for VectorType {
 }
 
 /// The vector component of a type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VectorPart {
     /// The number of elements in each vector.
     pub size: u32,
@@ -63,7 +63,7 @@ impl fmt::Display for VectorPart {
 }
 
 /// An option type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OptionType {
     /// The option part, if any.
     pub part: Option<OptionPart>,
@@ -81,7 +81,7 @@ impl fmt::Display for OptionType {
 }
 
 /// The option component of a type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OptionPart {}
 
 impl fmt::Display for OptionPart {
@@ -91,7 +91,7 @@ impl fmt::Display for OptionPart {
 }
 
 /// A scalar type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ScalarType {
     /// An integer type.
     Int(IntType),
@@ -106,7 +106,7 @@ impl fmt::Display for ScalarType {
 }
 
 /// An integer type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IntType {
     /// The sign of the type.
     pub sign: IntSign,
@@ -122,7 +122,7 @@ impl fmt::Display for IntType {
 }
 
 /// The sign of an integer type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IntSign {
     /// An unsigned integer.
     U,

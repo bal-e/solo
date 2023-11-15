@@ -7,8 +7,7 @@ use std::rc::Rc;
 
 use num_bigint::BigInt;
 
-mod ops;
-pub use ops::*;
+pub mod ops;
 
 mod prec;
 pub use prec::*;
@@ -142,10 +141,10 @@ pub enum Stmt {
 #[derive(Clone, Debug)]
 pub enum Expr {
     /// A unary expression.
-    Una(UnaOp, Box<Stored<Self>>),
+    Una(ops::StreamUnaOp, Box<Stored<Self>>),
 
     /// A binary expression.
-    Bin(BinOp, [Box<Stored<Self>>; 2]),
+    Bin(ops::StreamBinOp, [Box<Stored<Self>>; 2]),
 
     /// A parenthesized expression.
     Par(Box<Stored<Self>>),

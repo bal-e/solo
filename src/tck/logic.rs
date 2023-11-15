@@ -50,42 +50,78 @@ impl<T: Subtyping> Subtyping for Option<T> {
     }
 }
 
-impl Subtyping for MappedType {
+impl Subtyping for StreamType {
     fn is_subtype_of(&self, sup: &Self) -> bool {
-        // If 'sup' has a mapping component but 'self' does not, instances of
-        // 'self' would be broadcasted to fit; on the other hand, 'self' cannot
-        // have any mapping components that 'sup' is not expecting.
-
-        self.scalar.is_subtype_of(&sup.scalar)
-            && self.option.is_subtype_of(&sup.option)
-            && self.vector.is_subtype_of(&sup.vector)
-            && self.stream.is_subtype_of(&sup.stream)
+        self.part.is_subtype_of(&sup.part) && self.data.is_subtype_of(&sup.data)
     }
 
     fn merge_min(lhs: Self, rhs: Self) -> Result<Self, Error> {
         Ok(Self {
-            stream: Subtyping::merge_min(lhs.stream, rhs.stream)?,
-            vector: Subtyping::merge_min(lhs.vector, rhs.vector)?,
-            option: Subtyping::merge_min(lhs.option, rhs.option)?,
-            scalar: Subtyping::merge_min(lhs.scalar, rhs.scalar)?,
+            part: Subtyping::merge_min(lhs.part, rhs.part)?,
+            data: Subtyping::merge_min(lhs.data, rhs.data)?,
         })
     }
 
     fn merge_max(lhs: Self, rhs: Self) -> Result<Self, Error> {
         Ok(Self {
-            stream: Subtyping::merge_max(lhs.stream, rhs.stream)?,
-            vector: Subtyping::merge_max(lhs.vector, rhs.vector)?,
-            option: Subtyping::merge_max(lhs.option, rhs.option)?,
-            scalar: Subtyping::merge_max(lhs.scalar, rhs.scalar)?,
+            part: Subtyping::merge_max(lhs.part, rhs.part)?,
+            data: Subtyping::merge_max(lhs.data, rhs.data)?,
         })
     }
 
     fn infer_min(self, sup: Self) -> Result<Self, Error> {
         if !self.is_subtype_of(&sup) { return Err(Error::Subtype); }
-        let scalar = self.scalar.infer_min(sup.scalar)?;
+        Ok(Self { data: self.data.infer_min(sup.data)?, ..self })
+    }
+}
 
-        // None of the mapping components in 'self' can change.
-        Ok(Self { scalar, ..self })
+impl Subtyping for VectorType {
+    fn is_subtype_of(&self, sup: &Self) -> bool {
+        self.part.is_subtype_of(&sup.part) && self.data.is_subtype_of(&sup.data)
+    }
+
+    fn merge_min(lhs: Self, rhs: Self) -> Result<Self, Error> {
+        Ok(Self {
+            part: Subtyping::merge_min(lhs.part, rhs.part)?,
+            data: Subtyping::merge_min(lhs.data, rhs.data)?,
+        })
+    }
+
+    fn merge_max(lhs: Self, rhs: Self) -> Result<Self, Error> {
+        Ok(Self {
+            part: Subtyping::merge_max(lhs.part, rhs.part)?,
+            data: Subtyping::merge_max(lhs.data, rhs.data)?,
+        })
+    }
+
+    fn infer_min(self, sup: Self) -> Result<Self, Error> {
+        if !self.is_subtype_of(&sup) { return Err(Error::Subtype); }
+        Ok(Self { data: self.data.infer_min(sup.data)?, ..self })
+    }
+}
+
+impl Subtyping for OptionType {
+    fn is_subtype_of(&self, sup: &Self) -> bool {
+        self.part.is_subtype_of(&sup.part) && self.data.is_subtype_of(&sup.data)
+    }
+
+    fn merge_min(lhs: Self, rhs: Self) -> Result<Self, Error> {
+        Ok(Self {
+            part: Subtyping::merge_min(lhs.part, rhs.part)?,
+            data: Subtyping::merge_min(lhs.data, rhs.data)?,
+        })
+    }
+
+    fn merge_max(lhs: Self, rhs: Self) -> Result<Self, Error> {
+        Ok(Self {
+            part: Subtyping::merge_max(lhs.part, rhs.part)?,
+            data: Subtyping::merge_max(lhs.data, rhs.data)?,
+        })
+    }
+
+    fn infer_min(self, sup: Self) -> Result<Self, Error> {
+        if !self.is_subtype_of(&sup) { return Err(Error::Subtype); }
+        Ok(Self { data: self.data.infer_min(sup.data)?, ..self })
     }
 }
 

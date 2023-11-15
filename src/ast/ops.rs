@@ -1,160 +1,78 @@
-use super::Prec;
+pub use crate::ops::{ScalarIntBinOp, ScalarCmpBinOp, ScalarIntUnaOp};
 
-/// A binary operator.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum BinOp {
-    /// Add one to another.
-    Add,
+/// A binary operation on streams.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum StreamBinOp {
+    /// A mapped binary operation on vectors.
+    Map(VectorBinOp),
 
-    /// Subtract another.
-    Sub,
-
-    /// Multiply one by another.
-    Mul,
-
-    /// Divide by another.
-    Div,
-
-    /// Take the remainder when divided by another.
-    Rem,
-
-    /// Bitwise AND.
-    And,
-
-    /// Bitwise inclusive OR.
-    IOr,
-
-    /// Bitwise exclusive OR.
-    XOr,
-
-    /// Shift bits left (increase significance).
-    ShL,
-
-    /// Shift bits right (decrease significance).
-    ShR,
-
-    /// Concatenate vectors.
-    Cat,
-
-    /// Index into a vector.
-    Ind,
-
-    /// Expand a stream into a mask.
+    /// Stream expansion.
     Exp,
 
-    /// Reduce a stream by a mask.
+    /// Stream reduction.
     Red,
+}
 
-    /// A comparison operator.
-    Cmp(CmpOp),
+/// A unary operation on streams.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum StreamUnaOp {
+    /// A mapped unary operation on vectors.
+    Map(VectorUnaOp),
+}
 
-    /// Mask to an optional.
+/// A binary operation on maybe-vectors.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum VectorBinOp {
+    /// A mapped binary operation on options.
+    Map(OptionBinOp),
+
+    /// Vector concatenation.
+    Cat,
+
+    /// Vector indexing.
+    Ind,
+}
+
+/// A unary operation on maybe-vectors.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum VectorUnaOp {
+    /// A mapped unary operation on options.
+    Map(OptionUnaOp),
+}
+
+/// A binary operation on maybe-options.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum OptionBinOp {
+    /// A mapped binary operation on scalars.
+    Map(ScalarBinOp),
+
+    /// Option conditioning.
     Cond,
 
-    /// Unmask an optional.
+    /// Option defaulting.
     Else,
 }
 
-impl BinOp {
-    /// The symbol for this operation.
-    pub fn code(&self) -> &'static str {
-        match self {
-            Self::Add => "+",
-            Self::Sub => "-",
-            Self::Mul => "*",
-            Self::Div => "/",
-            Self::Rem => "%",
-
-            Self::And => "&",
-            Self::IOr => "|",
-            Self::XOr => "^",
-            Self::ShL => "<<",
-            Self::ShR => ">>",
-
-            Self::Cat => "~",
-            Self::Ind => "@",
-            Self::Exp => "<?",
-            Self::Red => ">?",
-
-            Self::Cmp(o) => o.code(),
-
-            Self::Cond => "?",
-            Self::Else => ":",
-        }
-    }
-
-    /// The precedence of this operation.
-    pub fn prec(&self) -> Prec {
-        match self {
-            Self::Add | Self::Sub => Prec::AddSub,
-            Self::Mul | Self::Div | Self::Rem => Prec::MulDiv,
-
-            Self::And | Self::IOr | Self::XOr => Prec::Bitwise,
-            Self::ShL | Self::ShR => Prec::Shift,
-
-            Self::Cat | Self::Ind => Prec::CatInd,
-            Self::Exp | Self::Red => Prec::ExpRed,
-
-            Self::Cmp(_) => Prec::Compare,
-
-            Self::Cond => Prec::Cond,
-            Self::Else => Prec::Else,
-        }
-    }
+/// A unary operation on maybe-options.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum OptionUnaOp {
+    /// A mapped unary operation on scalars.
+    Map(ScalarUnaOp),
 }
 
-/// A comparison operator.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum CmpOp {
-    /// Test for equality.
-    IsEq,
+/// A binary operation on scalars.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ScalarBinOp {
+    /// An operation on integers.
+    Int(ScalarIntBinOp),
 
-    /// Test for inequality.
-    IsNE,
-
-    /// Test that one is less than another.
-    IsLT,
-
-    /// Test that one is less than or equal to another.
-    IsLE,
-
-    /// Test than one is greater than another.
-    IsGT,
-
-    /// Test that one is greater than or equal to another.
-    IsGE,
+    /// A comparison operation.
+    Cmp(ScalarCmpBinOp),
 }
 
-impl CmpOp {
-    /// The code for this operation.
-    pub fn code(&self) -> &'static str {
-        match self {
-            Self::IsEq => "==",
-            Self::IsNE => "!=",
-            Self::IsLT => "<",
-            Self::IsLE => "<=",
-            Self::IsGT => ">",
-            Self::IsGE => ">=",
-        }
-    }
-}
-
-/// A unary operator.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum UnaOp {
-    /// Negation.
-    Neg,
-
-    /// Bitwise NOT.
-    Not,
-}
-
-impl UnaOp {
-    /// The symbol for this operation, if any.
-    pub fn code(&self) -> Option<&'static str> {
-        Some(match self {
-            Self::Neg => "-",
-            Self::Not => "~",
-        })
-    }
+/// A unary operation on scalars.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ScalarUnaOp {
+    /// An operation on integers.
+    Int(ScalarIntUnaOp),
 }
