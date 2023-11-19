@@ -216,7 +216,7 @@ impl<'ast> Storage<'ast> {
     ) -> Result<(StreamType, Option<&'ast Stored<ast::Expr>>), Error> {
         Ok(match bop {
             StreamBinOp::Map(bop) => {
-                let part = Subtyping::merge_max(lhs.1.part, rhs.1.part)?;
+                let part = Subtyping::merge_min(lhs.1.part, rhs.1.part)?;
                 let (data, eqto) = self.tck_vector_bop(bop,
                         (lhs.0, lhs.1.data), (rhs.0, rhs.1.data))?;
                 (StreamType { part, data }, eqto)
@@ -234,7 +234,7 @@ impl<'ast> Storage<'ast> {
                 (StreamType {
                     part: rhs.1.part,
                     data: VectorType {
-                        part: Subtyping::merge_max(lhs.1.data.part, rhs.1.data.part)?,
+                        part: Subtyping::merge_min(lhs.1.data.part, rhs.1.data.part)?,
                         data: lhs.1.data.data,
                     },
                 }, Some(lhs.0))
@@ -252,7 +252,7 @@ impl<'ast> Storage<'ast> {
                 (StreamType {
                     part: Some(StreamPart {}),
                     data: VectorType {
-                        part: Subtyping::merge_max(lhs.1.data.part, rhs.1.data.part)?,
+                        part: Subtyping::merge_min(lhs.1.data.part, rhs.1.data.part)?,
                         data: lhs.1.data.data,
                     },
                 }, Some(lhs.0))
@@ -310,7 +310,7 @@ impl<'ast> Storage<'ast> {
     ) -> Result<(VectorType, Option<&'ast Stored<ast::Expr>>), Error> {
         Ok(match bop {
             VectorBinOp::Map(bop) => {
-                let part = Subtyping::merge_max(lhs.1.part, rhs.1.part)?;
+                let part = Subtyping::merge_min(lhs.1.part, rhs.1.part)?;
                 let (data, eqto) = self.tck_option_bop(bop,
                         (lhs.0, lhs.1.data), (rhs.0, rhs.1.data))?;
                 (VectorType { part, data }, eqto)
@@ -329,7 +329,7 @@ impl<'ast> Storage<'ast> {
             VectorBinOp::Ind => (VectorType {
                 part: rhs.1.part,
                 data: OptionType {
-                    part: Subtyping::merge_max(lhs.1.data.part, rhs.1.data.part)?,
+                    part: Subtyping::merge_min(lhs.1.data.part, rhs.1.data.part)?,
                     data: lhs.1.data.data,
                 },
             }, Some(lhs.0)),
@@ -386,7 +386,7 @@ impl<'ast> Storage<'ast> {
     ) -> Result<(OptionType, Option<&'ast Stored<ast::Expr>>), Error> {
         Ok(match bop {
             OptionBinOp::Map(bop) => {
-                let part = Subtyping::merge_max(lhs.1.part, rhs.1.part)?;
+                let part = Subtyping::merge_min(lhs.1.part, rhs.1.part)?;
                 let (data, eqto) = self.tck_scalar_bop(bop,
                         (lhs.0, lhs.1.data), (rhs.0, rhs.1.data))?;
                 (OptionType { part, data }, eqto)
@@ -517,7 +517,7 @@ impl<'ast> Storage<'ast> {
         lhs: (&'ast Stored<ast::Expr>, OptionType),
         rhs: (&'ast Stored<ast::Expr>, OptionType),
     ) -> Result<(OptionType, &'ast Stored<ast::Expr>), Error> {
-        let part = Subtyping::merge_max(lhs.1.part, rhs.1.part)?;
+        let part = Subtyping::merge_min(lhs.1.part, rhs.1.part)?;
         let (data, eqto) = self.merge_expr_scalars(
             (lhs.0, lhs.1.data), (rhs.0, rhs.1.data))?;
         Ok((OptionType { part, data }, eqto))
@@ -530,7 +530,7 @@ impl<'ast> Storage<'ast> {
         rhs: (&'ast Stored<ast::Expr>, ScalarType),
     ) -> Result<(ScalarType, &'ast Stored<ast::Expr>), Error> {
         // Combine the types of the expressions.
-        let res = Subtyping::merge_max(lhs.1, rhs.1)?;
+        let res = Subtyping::merge_min(lhs.1, rhs.1)?;
 
         // Resolve both nodes all the way in.
         let [l, r] = [lhs.0, rhs.0]
