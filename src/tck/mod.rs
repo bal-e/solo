@@ -38,11 +38,11 @@ impl<'ast> Function<'ast> {
 /// Type-check a function.
 pub fn tck_fn(r#fn: &ast::Function) -> Result<Function<'_>, Error> {
     // Setup the type-checker.
-    let num_vars = r#fn.variable_ids.len();
+    let num_exprs = r#fn.expr_ids.len();
     let mut storage = Storage {
         ast: r#fn,
-        types: iter::repeat(None).take(num_vars).collect(),
-        tvars: VecUnionFindByRank::new(0 .. num_vars).unwrap(),
+        types: iter::repeat(None).take(num_exprs).collect(),
+        tvars: VecUnionFindByRank::new(0 .. num_exprs).unwrap(),
     };
 
     // Resolve all function arguments.
@@ -58,7 +58,7 @@ pub fn tck_fn(r#fn: &ast::Function) -> Result<Function<'_>, Error> {
     }
 
     // Resolve every expression in the body.
-    let types = (0 .. num_vars)
+    let types = (0 .. num_exprs)
         .map(|i| (i, storage.tvars.find_shorten(&i).unwrap()))
         .map(|(i, j)| storage.types[i].zip(storage.types[j]))
         .map(|x| x.map(|(mut i, j)| { i.data.data.data = j.data.data.data; i }))
