@@ -18,4 +18,4 @@ unionfind = "0.2.1"
 [dependencies.inkwell]
 git = "https://github.com/TheDan64/inkwell"
 branch = "master"
-features = ["llvm16-0"]
+features = ["llvm16-0-prefer-dynamic"]

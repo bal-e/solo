@@ -74,6 +74,8 @@ fn cmd_compile<'a>(
         },
     };
 
+    println!("AST: {:#?}", r#mod);
+
     for ast in r#mod.functions {
         // Type-check every function.
         let tck = match solo::tck::tck_fn(&ast) {
