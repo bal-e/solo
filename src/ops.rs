@@ -1,71 +1,8 @@
 use core::num::NonZeroU32;
 
+use num_bigint::BigInt;
+
 use crate::types::*;
-
-/// A singular binary operation.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SingleBinOp {
-    /// A regular binary operation on vectors.
-    Reg(VectorBinOp),
-}
-
-/// A singular unary operation.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SingleUnaOp {
-    /// A regular unary operation on vectors.
-    Reg(VectorUnaOp),
-}
-
-/// A singular collection operation.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SingleColOp {
-    /// Collection into an array.
-    Arr(StreamPart, VectorType),
-}
-
-/// A binary operation on streams.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum StreamBinOp {
-    /// A mapped binary operation on vectors.
-    Map {
-        /// The underlying operation.
-        bop: VectorBinOp,
-
-        /// The stream part being mapped over.
-        map: StreamPart,
-    },
-
-    /// Stream expansion.
-    Exp {
-        /// The type of the left side.
-        lhs: (StreamPart, VectorType),
-
-        /// The stream part of the expansion mask.
-        rhs: StreamPart,
-    },
-
-    /// Stream reduction.
-    Red {
-        /// The underlying type of the left side.
-        lhs: VectorType,
-
-        /// The stream part being zipped across.
-        zip: StreamPart,
-    },
-}
-
-/// A unary operation on streams.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum StreamUnaOp {
-    /// A mapped unary operation on vectors.
-    Map {
-        /// The underlying operation.
-        uop: VectorUnaOp,
-
-        /// The stream part being mapped over.
-        map: StreamPart,
-    },
-}
 
 /// A binary operation on maybe-vectors.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -187,6 +124,28 @@ impl VectorUnaOp {
     }
 }
 
+/// A nilary operation of vectors.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum VectorNilOp {
+    /// A mapped nilary operation of scalars.
+    Map {
+        /// The underlying operation.
+        nop: OptionNilOp,
+
+        /// The vector part being mapped over.
+        map: Option<VectorPart>,
+    },
+}
+
+impl VectorNilOp {
+    /// The destination type.
+    pub fn dst_type(self) -> VectorType {
+        match self {
+            Self::Map { nop, map } => VectorType { part: map, data: nop.dst_type() },
+        }
+    }
+}
+
 /// A binary operation on maybe-options.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum OptionBinOp {
@@ -299,6 +258,28 @@ impl OptionUnaOp {
     }
 }
 
+/// A nilary operation of options.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OptionNilOp {
+    /// A mapped nilary operation of scalars.
+    Map {
+        /// The underlying operation.
+        nop: ScalarNilOp,
+
+        /// The option part being mapped over.
+        map: Option<OptionPart>,
+    },
+}
+
+impl OptionNilOp {
+    /// The destination type.
+    pub fn dst_type(self) -> OptionType {
+        match self {
+            Self::Map { nop, map } => OptionType { part: map, data: nop.dst_type() },
+        }
+    }
+}
+
 /// A binary operation on scalars.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ScalarBinOp {
@@ -375,6 +356,38 @@ impl ScalarUnaOp {
     pub fn dst_type(self) -> ScalarType {
         match self {
             Self::Int { uop: _, map } => ScalarType::Int(map),
+        }
+    }
+}
+
+/// A nilary operation of scalars.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ScalarNilOp {
+    /// An integer literal.
+    Int {
+        /// The integer value.
+        val: BigInt,
+
+        /// The integer type.
+        dst: IntType,
+    },
+
+    /// An argument.
+    Arg {
+        /// The argument number.
+        num: u32,
+
+        /// The type of the argument.
+        dst: ScalarType,
+    },
+}
+
+impl ScalarNilOp {
+    /// The destination type.
+    pub fn dst_type(self) -> ScalarType {
+        match self {
+            Self::Int { dst, .. } => ScalarType::Int(dst),
+            Self::Arg { dst, .. } => dst,
         }
     }
 }

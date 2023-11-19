@@ -1,3 +1,5 @@
+use num_bigint::BigInt;
+
 pub use crate::ops::{ScalarIntBinOp, ScalarCmpBinOp, ScalarIntUnaOp};
 
 /// A binary operation on streams.
@@ -20,6 +22,13 @@ pub enum StreamUnaOp {
     Map(VectorUnaOp),
 }
 
+/// A nilary operation of streams.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum StreamNilOp {
+    /// A mapped nilary operation of vectors.
+    Map(VectorNilOp),
+}
+
 /// A binary operation on maybe-vectors.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum VectorBinOp {
@@ -38,6 +47,13 @@ pub enum VectorBinOp {
 pub enum VectorUnaOp {
     /// A mapped unary operation on options.
     Map(OptionUnaOp),
+}
+
+/// A nilary operation of maybe-vectors.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum VectorNilOp {
+    /// A mapped nilary operation of options.
+    Map(OptionNilOp),
 }
 
 /// A binary operation on maybe-options.
@@ -60,6 +76,13 @@ pub enum OptionUnaOp {
     Map(ScalarUnaOp),
 }
 
+/// A nilary operation of maybe-options.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum OptionNilOp {
+    /// A mapped nilary operation of scalars.
+    Map(ScalarNilOp),
+}
+
 /// A binary operation on scalars.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ScalarBinOp {
@@ -75,4 +98,14 @@ pub enum ScalarBinOp {
 pub enum ScalarUnaOp {
     /// An operation on integers.
     Int(ScalarIntUnaOp),
+}
+
+/// A nilary operation of scalars.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ScalarNilOp {
+    /// An integer literal.
+    Int(BigInt),
+
+    /// An argument.
+    Arg(u32),
 }

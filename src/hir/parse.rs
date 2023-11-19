@@ -38,7 +38,12 @@ impl<'tck, 'ast: 'tck> Parser<'tck, 'ast> {
 
         // Add the arguments to the set of bindings.
         for (i, arg) in ast.args.iter().enumerate() {
-            let id = this.exprs.add(Node::Arg(i as u32));
+            let dst = tck.get_expr_type(&arg.variable.expr);
+            let nop = ast::ops::ScalarNilOp::Arg(i as u32);
+            let nop = ast::ops::OptionNilOp::Map(nop);
+            let nop = ast::ops::VectorNilOp::Map(nop);
+            let nop = ast::ops::StreamNilOp::Map(nop);
+            let id = Self::parse_stream_nop(nop, dst, |n| this.parse_ins(n));
             assert_eq!(Ok(this.bindings.len()), arg.variable.ident.try_into());
             this.bindings.push(id);
         }
@@ -65,25 +70,141 @@ impl<'tck, 'ast: 'tck> Parser<'tck, 'ast> {
         ast: &'ast Stored<ast::Expr>,
     ) -> egg::Id {
         match &**ast {
-            ast::Expr::Una(o, x) => {
-                let xt = self.tck.get_expr_type(&x);
-                let x = self.parse_expr(&x);
+            ast::Expr::Una(uop, src) => {
+                let src_ty = self.tck.get_expr_type(&src);
+                let src_id = self.parse_expr(&src);
+                let src = (src_id, src_ty.data);
 
-                let ast::ops::StreamUnaOp::Map(o) = o;
-                Self::parse_vector_uop(*o, (x, xt.data), |uop, src| {
-                    self.exprs.add(Node::SingleUna(SingleUnaOp::Reg(uop), [src]))
-                })
+                Self::parse_stream_uop(*uop, src, |n| self.parse_ins(n))
+            },
+
+            ast::Expr::Bin(bop, [lhs, rhs]) => {
+                let lhs_ty = self.tck.get_expr_type(&lhs);
+                let lhs_id = self.parse_expr(&lhs);
+                let lhs = (lhs_id, lhs_ty.data);
+
+                let rhs_ty = self.tck.get_expr_type(&rhs);
+                let rhs_id = self.parse_expr(&rhs);
+                let rhs = (rhs_id, rhs_ty.data);
+
+                Self::parse_stream_bop(*bop, lhs, rhs, |n| self.parse_ins(n))
+            },
+
+            ast::Expr::Par(src) => self.parse_expr(&src),
+
+            ast::Expr::Cast(..) => todo!(),
+
+            ast::Expr::Int(num) => {
+                let dst = self.tck.get_expr_type(ast);
+                let nop = ast::ops::ScalarNilOp::Int(num.clone());
+                let nop = ast::ops::OptionNilOp::Map(nop);
+                let nop = ast::ops::VectorNilOp::Map(nop);
+                let nop = ast::ops::StreamNilOp::Map(nop);
+
+                Self::parse_stream_nop(nop, dst, |n| self.parse_ins(n))
             },
 
             ast::Expr::Var(v) => self.bindings[v.ident as usize],
+
+            ast::Expr::Arg => unreachable!(),
 
             ast::Expr::Blk { stmts, rexpr } => {
                 stmts.iter().for_each(|s| self.parse_stmt(s));
                 return self.parse_expr(&rexpr)
             },
-
-            _ => todo!(),
         }
+    }
+
+    fn parse_ins(&mut self, node: StreamNode) -> egg::Id {
+        self.exprs.add(match node {
+            StreamNode::Una(uop, src) => Node::Una(uop, src),
+            StreamNode::Bin(bop, src) => Node::Bin(bop, src),
+            StreamNode::Nil(nop) => Node::Nil(nop),
+        })
+    }
+
+    fn parse_stream_bop(
+        bop: ast::ops::StreamBinOp,
+        lhs: (egg::Id, VectorType),
+        rhs: (egg::Id, VectorType),
+        mut ins: impl FnMut(StreamNode) -> egg::Id,
+    ) -> egg::Id {
+        match bop {
+            ast::ops::StreamBinOp::Map(bop) => {
+                Self::parse_vector_bop(bop, lhs, rhs, |node| {
+                    Self::parse_stream_map(None, &mut ins, node)
+                })
+            },
+
+            ast::ops::StreamBinOp::Exp => {
+                assert_eq!(None, rhs.1.part);
+                assert_eq!(None, rhs.1.data.part);
+                assert!(matches!(rhs.1.data.data, ScalarType::Int(_)));
+
+                let bop = StreamBinOp::Exp { lhs: lhs.1 };
+                (ins)(StreamNode::Bin(bop, [lhs.0, rhs.0]))
+            },
+
+            ast::ops::StreamBinOp::Red => {
+                assert_eq!(None, rhs.1.part);
+                assert_eq!(None, rhs.1.data.part);
+                assert!(matches!(rhs.1.data.data, ScalarType::Int(_)));
+
+                let bop = StreamBinOp::Red { lhs: lhs.1 };
+                (ins)(StreamNode::Bin(bop, [lhs.0, rhs.0]))
+            },
+        }
+    }
+
+    fn parse_stream_uop(
+        uop: ast::ops::StreamUnaOp,
+        src: (egg::Id, VectorType),
+        mut ins: impl FnMut(StreamNode) -> egg::Id,
+    ) -> egg::Id {
+        match uop {
+            ast::ops::StreamUnaOp::Map(uop) => {
+                Self::parse_vector_uop(uop, src, |node| {
+                    Self::parse_stream_map(None, &mut ins, node)
+                })
+            },
+        }
+    }
+
+    fn parse_stream_nop(
+        nop: ast::ops::StreamNilOp,
+        dst: StreamType,
+        mut ins: impl FnMut(StreamNode) -> egg::Id,
+    ) -> egg::Id {
+        match nop {
+            ast::ops::StreamNilOp::Map(nop) => {
+                Self::parse_vector_nop(nop, dst.data, |node| {
+                    Self::parse_stream_map(dst.part, &mut ins, node)
+                })
+            },
+        }
+    }
+
+    fn parse_stream_map(
+        map: Option<StreamPart>,
+        mut ins: impl FnMut(StreamNode) -> egg::Id,
+        node: VectorNode,
+    ) -> egg::Id {
+        (ins)(match node {
+            VectorNode::Nil(nop) => {
+                let nop = StreamNilOp::Map { nop, map };
+                StreamNode::Nil(nop)
+            },
+
+            VectorNode::Una(uop, src) => {
+                let uop = StreamUnaOp::Map { uop };
+                StreamNode::Una(uop, src)
+            },
+
+            VectorNode::Bin(bop, src) => {
+                let bop = StreamBinOp::Map { bop };
+                StreamNode::Bin(bop, src)
+            },
+        })
     }
 
     fn parse_vector_bop(
@@ -94,62 +215,79 @@ impl<'tck, 'ast: 'tck> Parser<'tck, 'ast> {
     ) -> egg::Id {
         match bop {
             ast::ops::VectorBinOp::Map(bop) => {
-                let (lhs_id, rhs_id, map) = match (lhs.1.part, rhs.1.part) {
-                    (None, None) => (lhs.0, rhs.0, None),
-                    (Some(map), None) => {
-                        let uop = VectorUnaOp::New { src: rhs.1.data, map };
-                        (lhs.0, (ins)(VectorNode::Una(uop, [rhs.0])), Some(map))
-                    },
-                    (None, Some(map)) => {
-                        let uop = VectorUnaOp::New { src: lhs.1.data, map };
-                        ((ins)(VectorNode::Una(uop, [lhs.0])), rhs.0, Some(map))
-                    },
-                    (Some(lhs_part), Some(rhs_part)) => {
-                        let VectorPart { size: lhs_size } = lhs_part;
-                        let VectorPart { size: rhs_size } = rhs_part;
-                        assert_eq!(lhs_size, rhs_size);
-                        (lhs.0, rhs.0, Some(VectorPart { size: lhs_size }))
-                    },
-                };
-
-                let bop = VectorBinOp::Map { bop, map };
-                (ins)(VectorNode::Bin(bop, [lhs_id, rhs_id]))
+                let (lhs_id, rhs_id, map)
+                    = Self::parse_vector_zip(lhs, rhs, &mut ins);
+                let lhs = (lhs_id, lhs.1.data);
+                let rhs = (rhs_id, rhs.1.data);
+                Self::parse_option_bop(bop, lhs, rhs, |node| {
+                    Self::parse_vector_map(map, &mut ins, node)
+                })
             },
 
             ast::ops::VectorBinOp::Cat => {
-                let (lhs_id, lhs_part) = match lhs.1.part {
-                    None => {
-                        let map = Some(VectorPart { size: 1 });
-                        let uop = VectorUnaOp::New { src: lhs.1.data, map };
-                        ((ins)(VectorNode::Una(uop, [lhs.0])), map)
-                    },
-                    Some(part) => (lhs.0, part)
-                };
+                assert_eq!(lhs.1.data, rhs.1.data);
 
-                let (rhs_id, rhs_part) = match rhs.1.part {
-                    None => {
-                        let map = Some(VectorPart { size: 1 });
-                        let uop = VectorUnaOp::New { src: rhs.1.data, map };
-                        ((ins)(VectorNode::Una(uop, [rhs.0])), map)
-                    },
-                    Some(part) => (rhs.0, part)
-                };
+                // Zip up options.
+                let map = [lhs, rhs]
+                    .into_iter()
+                    .map(|x| x.1.data.part)
+                    .fold(None, Option::or);
 
-                let bop = VectorBinOp::Cat {
-                    src: lhs.1.data,
-                    lhs: lhs_part,
-                    rhs: rhs_part,
-                };
-                (ins)(VectorNode::Bin(bop, [lhs_id, rhs_id]))
+                let [lhs_id, rhs_id] = [lhs, rhs].map(|x| {
+                    Self::parse_option_new(map, (x.0, x.1.data), |node| {
+                        Self::parse_vector_map(x.1.part, &mut ins, node)
+                    })
+                });
+
+                let lhs_ty = OptionType { part: map, .. lhs.1.data };
+                let lhs_ty = VectorType { data: lhs_ty, .. lhs.1 };
+                let lhs = (lhs_id, lhs_ty);
+
+                let rhs_ty = OptionType { part: map, .. rhs.1.data };
+                let rhs_ty = VectorType { data: rhs_ty, .. rhs.1 };
+                let rhs = (rhs_id, rhs_ty);
+
+                // Convert to vectors wherever necessary.
+                let src = lhs.1.data;
+                let [lhs, rhs] = [lhs, rhs].map(|(id, ty)| match ty.part {
+                    Some(part) => (id, part),
+                    None => {
+                        let map = VectorPart { size: 1 };
+                        let uop = VectorUnaOp::New { src, map };
+                        ((ins)(VectorNode::Una(uop, [id])), map)
+                    },
+                });
+
+                let bop = VectorBinOp::Cat { src, lhs: lhs.1, rhs: rhs.1 };
+                (ins)(VectorNode::Bin(bop, [lhs.0, rhs.0]))
             },
 
             ast::ops::VectorBinOp::Ind => {
-                let (lhs_id, rhs_id) = (lhs.0, rhs.0);
+                // Zip up options.
+                let map = [lhs, rhs]
+                    .into_iter()
+                    .map(|x| x.1.data.part)
+                    .fold(None, Option::or);
+
+                let [lhs_id, rhs_id] = [lhs, rhs].map(|x| {
+                    Self::parse_option_new(map, (x.0, x.1.data), |node| {
+                        Self::parse_vector_map(x.1.part, &mut ins, node)
+                    })
+                });
+
+                let lhs_ty = OptionType { part: map, .. lhs.1.data };
+                let lhs_ty = VectorType { data: lhs_ty, .. lhs.1 };
+                let lhs = (lhs_id, lhs_ty);
+
+                let rhs_ty = OptionType { part: map, .. rhs.1.data };
+                let rhs_ty = VectorType { data: rhs_ty, .. rhs.1 };
+                let rhs = (rhs_id, rhs_ty);
+
                 let bop = VectorBinOp::Ind {
                     lhs: (lhs.1.part.unwrap(), lhs.1.data),
                     rhs: rhs.1,
                 };
-                (ins)(VectorNode::Bin(bop, [lhs_id, rhs_id]))
+                (ins)(VectorNode::Bin(bop, [lhs.0, rhs.0]))
             },
         }
     }
@@ -162,7 +300,46 @@ impl<'tck, 'ast: 'tck> Parser<'tck, 'ast> {
         match uop {
             ast::ops::VectorUnaOp::Map(uop) =>
                 Self::parse_option_uop(uop, (src.0, src.1.data),
-                    |node| Self::parse_vector_map(src.1.part, ins, node)),
+                    |node| Self::parse_vector_map(src.1.part, &mut ins, node)),
+        }
+    }
+
+    fn parse_vector_nop(
+        nop: ast::ops::VectorNilOp,
+        dst: VectorType,
+        mut ins: impl FnMut(VectorNode) -> egg::Id,
+    ) -> egg::Id {
+        match nop {
+            ast::ops::VectorNilOp::Map(nop) => {
+                Self::parse_option_nop(nop, dst.data, |node| {
+                    Self::parse_vector_map(dst.part, &mut ins, node)
+                })
+            },
+        }
+    }
+
+    fn parse_vector_zip(
+        lhs: (egg::Id, VectorType),
+        rhs: (egg::Id, VectorType),
+        mut ins: impl FnMut(VectorNode) -> egg::Id,
+    ) -> (egg::Id, egg::Id, Option<VectorPart>) {
+        let map = [lhs.1.part, rhs.1.part].into_iter().fold(None, Option::or);
+        let lhs_id = map.map(|map| Self::parse_vector_new(map, lhs, &mut ins));
+        let rhs_id = map.map(|map| Self::parse_vector_new(map, rhs, &mut ins));
+        (lhs_id.unwrap_or(lhs.0), rhs_id.unwrap_or(rhs.0), map)
+    }
+
+    fn parse_vector_new(
+        map: VectorPart,
+        src: (egg::Id, VectorType),
+        mut ins: impl FnMut(VectorNode) -> egg::Id,
+    ) -> egg::Id {
+        if let Some(part) = src.1.part {
+            assert_eq!(map, part);
+            src.0
+        } else {
+            let uop = VectorUnaOp::New { src: src.1.data, map };
+            (ins)(VectorNode::Una(uop, [src.0]))
         }
     }
 
@@ -172,18 +349,20 @@ impl<'tck, 'ast: 'tck> Parser<'tck, 'ast> {
         node: OptionNode,
     ) -> egg::Id {
         (ins)(match node {
+            OptionNode::Nil(nop) => {
+                let nop = VectorNilOp::Map { nop, map };
+                VectorNode::Nil(nop)
+            },
+
             OptionNode::Una(uop, src) => {
                 let uop = VectorUnaOp::Map { uop, map };
                 VectorNode::Una(uop, src)
             },
 
             OptionNode::Bin(bop, src) => {
-                let uop = VectorBinOp::Map { bop, map };
+                let bop = VectorBinOp::Map { bop, map };
                 VectorNode::Bin(bop, src)
             },
-
-            OptionNode::Int(n) => VectorNode::Int(n),
-            OptionNode::Arg(n) => VectorNode::Arg(n),
         })
     }
 
@@ -195,37 +374,19 @@ impl<'tck, 'ast: 'tck> Parser<'tck, 'ast> {
     ) -> egg::Id {
         match bop {
             ast::ops::OptionBinOp::Map(bop) => {
-                let (lhs_id, rhs_id, map) = match (lhs.1.part, rhs.1.part) {
-                    (None, None) => (lhs.0, rhs.0, None),
-                    (Some(map), None) => {
-                        let uop = OptionUnaOp::New { src: rhs.1.data, map };
-                        (lhs.0, (ins)(OptionNode::Una(uop, [rhs.0])), Some(map))
-                    },
-                    (None, Some(map)) => {
-                        let uop = OptionUnaOp::New { src: lhs.1.data, map };
-                        ((ins)(OptionNode::Una(uop, [lhs.0])), rhs.0, Some(map))
-                    },
-                    (Some(lhs_part), Some(rhs_part)) => {
-                        let OptionPart {} = lhs_part;
-                        let OptionPart {} = rhs_part;
-                        (lhs.0, rhs.0, Some(OptionPart {}))
-                    },
-                };
-
-                let bop = OptionBinOp::Map { bop, map };
-                (ins)(OptionNode::Bin(bop, [lhs_id, rhs_id]))
+                let (lhs_id, rhs_id, map) =
+                    Self::parse_option_zip(lhs, rhs, &mut ins);
+                let lhs = (lhs_id, lhs.1.data);
+                let rhs = (rhs_id, rhs.1.data);
+                Self::parse_scalar_bop(bop, lhs, rhs, |node| {
+                    Self::parse_option_map(map, &mut ins, node)
+                })
             },
 
             ast::ops::OptionBinOp::Cond => {
+                let map = Some(OptionPart {});
                 let lhs_id = lhs.0;
-                let rhs_id = match rhs.1.part {
-                    None => {
-                        let map = Some(OptionPart {});
-                        let uop = OptionUnaOp::New { src: rhs.1.data, map };
-                        (ins)(OptionNode::Una(uop, [rhs.0]))
-                    },
-                    Some(OptionPart {}) => rhs.0,
-                };
+                let rhs_id = Self::parse_option_new(map, rhs, &mut ins);
 
                 let bop = OptionBinOp::Cond { rhs: rhs.1.data };
                 (ins)(OptionNode::Bin(bop, [lhs_id, rhs_id]))
@@ -250,7 +411,48 @@ impl<'tck, 'ast: 'tck> Parser<'tck, 'ast> {
         match uop {
             ast::ops::OptionUnaOp::Map(uop) =>
                 Self::parse_scalar_uop(uop, (src.0, src.1.data),
-                    |node| Self::parse_option_map(src.1.part, ins, node)),
+                    |node| Self::parse_option_map(src.1.part, &mut ins, node)),
+        }
+    }
+
+    fn parse_option_nop(
+        nop: ast::ops::OptionNilOp,
+        dst: OptionType,
+        mut ins: impl FnMut(OptionNode) -> egg::Id,
+    ) -> egg::Id {
+        match nop {
+            ast::ops::OptionNilOp::Map(nop) => {
+                Self::parse_scalar_nop(nop, dst.data, |node| {
+                    Self::parse_option_map(dst.part, &mut ins, node)
+                })
+            },
+        }
+    }
+
+    fn parse_option_zip(
+        lhs: (egg::Id, OptionType),
+        rhs: (egg::Id, OptionType),
+        mut ins: impl FnMut(OptionNode) -> egg::Id,
+    ) -> (egg::Id, egg::Id, Option<OptionPart>) {
+        let map = [lhs.1.part, rhs.1.part].into_iter().fold(None, Option::or);
+        let lhs_id = Self::parse_option_new(map, lhs, &mut ins);
+        let rhs_id = Self::parse_option_new(map, rhs, &mut ins);
+        (lhs_id, rhs_id, map)
+    }
+
+    fn parse_option_new(
+        map: Option<OptionPart>,
+        src: (egg::Id, OptionType),
+        mut ins: impl FnMut(OptionNode) -> egg::Id,
+    ) -> egg::Id {
+        if let Some(part) = src.1.part {
+            assert_eq!(map, Some(part));
+            src.0
+        } else if let Some(map) = map {
+            let uop = OptionUnaOp::New { src: src.1.data, map };
+            (ins)(OptionNode::Una(uop, [src.0]))
+        } else {
+            src.0
         }
     }
 
@@ -260,18 +462,20 @@ impl<'tck, 'ast: 'tck> Parser<'tck, 'ast> {
         node: ScalarNode,
     ) -> egg::Id {
         (ins)(match node {
+            ScalarNode::Nil(nop) => {
+                let nop = OptionNilOp::Map { nop, map };
+                OptionNode::Nil(nop)
+            },
+
             ScalarNode::Una(uop, src) => {
                 let uop = OptionUnaOp::Map { uop, map };
                 OptionNode::Una(uop, src)
             },
 
             ScalarNode::Bin(bop, src) => {
-                let uop = OptionBinOp::Map { bop, map };
+                let bop = OptionBinOp::Map { bop, map };
                 OptionNode::Bin(bop, src)
             },
-
-            ScalarNode::Int(n) => OptionNode::Int(n),
-            ScalarNode::Arg(n) => OptionNode::Arg(n),
         })
     }
 
@@ -311,36 +515,51 @@ impl<'tck, 'ast: 'tck> Parser<'tck, 'ast> {
             },
         }
     }
+
+    fn parse_scalar_nop(
+        nop: ast::ops::ScalarNilOp,
+        dst: ScalarType,
+        mut ins: impl FnMut(ScalarNode) -> egg::Id,
+    ) -> egg::Id {
+        match nop {
+            ast::ops::ScalarNilOp::Int(val) => {
+                let ScalarType::Int(dst) = dst;
+                let nop = ScalarNilOp::Int { val, dst };
+                (ins)(ScalarNode::Nil(nop))
+            },
+
+            ast::ops::ScalarNilOp::Arg(num) => {
+                let nop = ScalarNilOp::Arg { num, dst };
+                (ins)(ScalarNode::Nil(nop))
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum StreamNode {
+    Nil(StreamNilOp),
     Una(StreamUnaOp, [Id; 1]),
     Bin(StreamBinOp, [Id; 2]),
-    Int(BigInt),
-    Arg(u32),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum VectorNode {
+    Nil(VectorNilOp),
     Una(VectorUnaOp, [Id; 1]),
     Bin(VectorBinOp, [Id; 2]),
-    Int(BigInt),
-    Arg(u32),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum OptionNode {
+    Nil(OptionNilOp),
     Una(OptionUnaOp, [Id; 1]),
     Bin(OptionBinOp, [Id; 2]),
-    Int(BigInt),
-    Arg(u32),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum ScalarNode {
+    Nil(ScalarNilOp),
     Una(ScalarUnaOp, [Id; 1]),
     Bin(ScalarBinOp, [Id; 2]),
-    Int(BigInt),
-    Arg(u32),
 }
