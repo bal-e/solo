@@ -43,6 +43,15 @@ pub enum StreamUnaOp {
     Map(VectorUnaOp),
 }
 
+impl StreamUnaOp {
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        match self {
+            Self::Map(uop) => uop.syntax(),
+        }
+    }
+}
+
 /// A nilary operation of streams.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum StreamNilOp {
@@ -87,6 +96,15 @@ impl VectorBinOp {
 pub enum VectorUnaOp {
     /// A mapped unary operation on options.
     Map(OptionUnaOp),
+}
+
+impl VectorUnaOp {
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        match self {
+            Self::Map(uop) => uop.syntax(),
+        }
+    }
 }
 
 /// A nilary operation of maybe-vectors.
@@ -136,6 +154,15 @@ pub enum OptionUnaOp {
     Map(ScalarUnaOp),
 }
 
+impl OptionUnaOp {
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        match self {
+            Self::Map(uop) => uop.syntax(),
+        }
+    }
+}
+
 /// A nilary operation of maybe-options.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum OptionNilOp {
@@ -176,6 +203,15 @@ impl ScalarBinOp {
 pub enum ScalarUnaOp {
     /// An operation on integers.
     Int(ScalarIntUnaOp),
+}
+
+impl ScalarUnaOp {
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        match self {
+            Self::Int(uop) => uop.syntax(),
+        }
+    }
 }
 
 /// A nilary operation of scalars.
@@ -233,6 +269,16 @@ impl ScalarCmpBinOp {
             Self::IsLE => "<=",
             Self::IsGT => ">",
             Self::IsGE => ">=",
+        })
+    }
+}
+
+impl ScalarIntUnaOp {
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::Neg => "-",
+            Self::Not => "~",
         })
     }
 }
