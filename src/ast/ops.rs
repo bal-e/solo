@@ -25,6 +25,15 @@ impl StreamBinOp {
             Self::Exp | Self::Red => Prec::ExpRed,
         }
     }
+
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        match self {
+            Self::Map(bop) => bop.syntax(),
+            Self::Exp => Some("<?"),
+            Self::Red => Some(">?"),
+        }
+    }
 }
 
 /// A unary operation on streams.
@@ -60,6 +69,15 @@ impl VectorBinOp {
         match self {
             Self::Map(bop) => bop.prec(),
             Self::Cat | Self::Ind => Prec::CatInd,
+        }
+    }
+
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        match self {
+            Self::Map(bop) => bop.syntax(),
+            Self::Cat => Some("~"),
+            Self::Ind => None,
         }
     }
 }
@@ -100,6 +118,15 @@ impl OptionBinOp {
             Self::Else => Prec::Else,
         }
     }
+
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        match self {
+            Self::Map(bop) => bop.syntax(),
+            Self::Cond => Some("?"),
+            Self::Else => Some(":"),
+        }
+    }
 }
 
 /// A unary operation on maybe-options.
@@ -131,7 +158,15 @@ impl ScalarBinOp {
     pub fn prec(&self) -> Prec {
         match self {
             Self::Int(bop) => bop.prec(),
-            Self::Cmp(_) => Prec::Compare,
+            Self::Cmp(bop) => bop.prec(),
+        }
+    }
+
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        match self {
+            Self::Int(bop) => bop.syntax(),
+            Self::Cmp(bop) => bop.syntax(),
         }
     }
 }
@@ -163,5 +198,41 @@ impl ScalarIntBinOp {
             Self::And | Self::IOr | Self::XOr => Prec::Bitwise,
             Self::ShL | Self::ShR => Prec::Shift,
         }
+    }
+
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::Rem => "%",
+
+            Self::And => "&",
+            Self::IOr => "|",
+            Self::XOr => "^",
+            Self::ShL => "<<",
+            Self::ShR => ">>",
+        })
+    }
+}
+
+impl ScalarCmpBinOp {
+    /// The precedence of this operation.
+    pub fn prec(&self) -> Prec {
+        Prec::Compare
+    }
+
+    /// The syntax for this operation.
+    pub fn syntax(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::IsEq => "==",
+            Self::IsNE => "!=",
+            Self::IsLT => "<",
+            Self::IsLE => "<=",
+            Self::IsGT => ">",
+            Self::IsGE => ">=",
+        })
     }
 }
