@@ -15,6 +15,9 @@ pub use prec::*;
 pub mod parse;
 pub use parse::parse_mod;
 
+pub mod format;
+pub use format::format_module;
+
 /// A module definition.
 #[derive(Clone, Debug)]
 pub struct Module {

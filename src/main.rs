@@ -74,7 +74,9 @@ fn cmd_compile<'a>(
         },
     };
 
-    println!("AST: {:#?}", r#mod);
+    let mut syntax = String::new();
+    solo::ast::format_module(&mut syntax, &r#mod).unwrap();
+    println!("{}", syntax);
 
     for ast in r#mod.functions {
         // Type-check every function.
