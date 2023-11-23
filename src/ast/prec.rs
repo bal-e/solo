@@ -1,5 +1,7 @@
 use core::cmp::{Ordering, PartialOrd};
 
+use super::Expr;
+
 /// Operator precedence.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Prec {
@@ -69,6 +71,16 @@ impl Prec {
             Ordering::Less => Some(Assoc::Right),
             Ordering::Equal => lhs.assoc(),
             Ordering::Greater => Some(Assoc::Left),
+        }
+    }
+}
+
+impl Expr {
+    /// The precedence of an AST expression.
+    pub fn prec(&self) -> Prec {
+        match self {
+            Expr::Bin(bop, _) => bop.prec(),
+            _ => Prec::Max,
         }
     }
 }

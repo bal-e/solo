@@ -55,7 +55,7 @@ impl<W: fmt::Write> Formatter<W> {
         }
         self.inner.write_str(") ")?;
 
-        self.format_expr(&**ast.body, Prec::Min)
+        self.format_expr(&**ast.body)
     }
 
     /// Format the AST of an argument.
@@ -78,7 +78,7 @@ impl<W: fmt::Write> Formatter<W> {
             Stmt::Let(var) => {
                 self.format_ident(&var.name)?;
                 self.inner.write_str(" := ")?;
-                self.format_expr(&**var.expr, Prec::Min)?;
+                self.format_expr(&**var.expr)?;
                 self.inner.write_str(";")?;
                 Ok(())
             },
@@ -86,21 +86,48 @@ impl<W: fmt::Write> Formatter<W> {
     }
 
     /// Format the AST of an expression.
-    fn format_expr(&mut self, ast: &Expr, prec: Prec) -> fmt::Result {
+    fn format_expr(&mut self, ast: &Expr) -> fmt::Result {
         match ast {
             Expr::Una(uop, src) => {
-                let _ = (uop, src);
-                self.inner.write_str("una expr")
+                self.inner.write_str(uop.syntax())?;
+                if src.prec() != Prec::Max {
+                    self.inner.write_char('(')?;
+                    self.format_expr(&**src)?;
+                    self.inner.write_char(')')?;
+                } else {
+                    self.format_expr(&**src)?;
+                }
+
+                Ok(())
             },
 
             Expr::Bin(bop, src) => {
-                let _ = (bop, src);
-                self.inner.write_str("bin expr")
+                if Prec::cmp(src[0].prec(), bop.prec()) != Some(Assoc::Left) {
+                    self.inner.write_char('(')?;
+                    self.format_expr(&**src[0])?;
+                    self.inner.write_char(')')?;
+                } else {
+                    self.format_expr(&**src[0])?;
+                }
+
+                self.inner.write_char(' ')?;
+                self.inner.write_str(bop.syntax())?;
+                self.inner.write_char(' ')?;
+
+                if Prec::cmp(bop.prec(), src[1].prec()) != Some(Assoc::Right) {
+                    self.inner.write_char('(')?;
+                    self.format_expr(&**src[1])?;
+                    self.inner.write_char(')')?;
+                } else {
+                    self.format_expr(&**src[1])?;
+                }
+
+                Ok(())
             },
 
             Expr::Par(src) => {
                 self.inner.write_char('(')?;
-                self.format_expr(&**src, Prec::Min)?;
+                self.format_expr(&**src)?;
                 self.inner.write_char(')')?;
                 Ok(())
             },
@@ -109,7 +136,15 @@ impl<W: fmt::Write> Formatter<W> {
                 self.inner.write_char('(')?;
                 self.format_mapped_type(&r#type)?;
                 self.inner.write_str(") ")?;
-                self.format_expr(&**src, Prec::Max)?;
+
+                if src.prec() != Prec::Max {
+                    self.inner.write_char('(')?;
+                    self.format_expr(&**src)?;
+                    self.inner.write_char(')')?;
+                } else {
+                    self.format_expr(&**src)?;
+                }
+
                 Ok(())
             },
 
@@ -132,7 +167,7 @@ impl<W: fmt::Write> Formatter<W> {
                     }
 
                     this.write_indent()?;
-                    this.format_expr(&**rexpr, Prec::Min)?;
+                    this.format_expr(&**rexpr)?;
                     this.inner.write_char('\n')
                 })
             },
