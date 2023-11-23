@@ -59,14 +59,12 @@ op_pre   = { op_neg | op_not }
   op_not = { "~" }
 
 /// A suffix (postfix) operator.
-op_suf   = { op_ind }
-  /// An index operation.
-  op_ind = { "[" ~ expr ~ "]" }
+op_suf   = { !ANY ~ ANY }
 
 /// A binary (infix) operator.
 op_bin   = { op_add | op_sub | op_mul | op_div | op_rem
            | op_and | op_ior | op_xor | op_shl | op_shr
-	   | op_cat | op_exp | op_red
+	   | op_cat | op_ind | op_exp | op_red
            | op_iseq | op_isne | op_isle | op_islt | op_isge | op_isgt
 	   | op_cond | op_else
            }
@@ -94,6 +92,8 @@ op_bin   = { op_add | op_sub | op_mul | op_div | op_rem
 
   /// Concatenate.
   op_cat = { "~" }
+  /// Index.
+  op_ind = { "@" }
   /// Expand to a mask.
   op_exp = { "<?" }
   /// Reduce by a mask.

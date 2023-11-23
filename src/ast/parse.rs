@@ -253,6 +253,7 @@ impl Parser {
                 Rule::op_shr => (scalar_int)(ScalarIntBinOp::ShR),
 
                 Rule::op_cat => (vector)(VectorBinOp::Cat),
+                Rule::op_ind => (vector)(VectorBinOp::Ind),
                 Rule::op_exp => (stream)(StreamBinOp::Exp),
                 Rule::op_red => (stream)(StreamBinOp::Red),
 
@@ -309,7 +310,7 @@ impl Parser {
             Rule::op_mul | Rule::op_div | Rule::op_rem => Prec::MulDiv,
             Rule::op_and | Rule::op_ior | Rule::op_xor => Prec::Bitwise,
             Rule::op_shl | Rule::op_shr => Prec::Shift,
-            Rule::op_cat => Prec::CatInd,
+            Rule::op_cat | Rule::op_ind => Prec::CatInd,
             Rule::op_exp | Rule::op_red => Prec::ExpRed,
             Rule::op_iseq | Rule::op_isne => Prec::Compare,
             Rule::op_islt | Rule::op_isle => Prec::Compare,
@@ -357,18 +358,10 @@ impl Parser {
         let mut pairs = input.into_inner();
 
         let expr = self.parse_atom(pairs.next().unwrap())?;
-        pairs.try_fold(expr, |expr, op| {
+        pairs.try_fold(expr, |_expr, op| {
             assert_eq!(Rule::op_suf, op.as_rule());
             let op = op.into_inner().next().unwrap();
             match op.as_rule() {
-                Rule::op_ind => {
-                    let ind = op.into_inner().next().unwrap();
-                    let ind = self.parse_expr(ind)?;
-                    let lhs = Box::new(self.store_expr(expr));
-                    let rhs = Box::new(self.store_expr(ind));
-                    let bop = StreamBinOp::Map(VectorBinOp::Ind);
-                    Ok(Expr::Bin(bop, [lhs, rhs]))
-                },
                 _ => unreachable!(),
             }
         })

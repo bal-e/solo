@@ -34,9 +34,6 @@ pub enum Prec {
     Bitwise,
 
     /// The highest possible precedence.
-    ///
-    /// This includes unary operators, because they cannot be divided into two
-    /// distinct subexpressions.
     Max,
 }
 

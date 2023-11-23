@@ -27,11 +27,11 @@ impl StreamBinOp {
     }
 
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
+    pub fn syntax(&self) -> &'static str {
         match self {
             Self::Map(bop) => bop.syntax(),
-            Self::Exp => Some("<?"),
-            Self::Red => Some(">?"),
+            Self::Exp => "<?",
+            Self::Red => ">?",
         }
     }
 }
@@ -45,7 +45,7 @@ pub enum StreamUnaOp {
 
 impl StreamUnaOp {
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
+    pub fn syntax(&self) -> &'static str {
         match self {
             Self::Map(uop) => uop.syntax(),
         }
@@ -82,11 +82,11 @@ impl VectorBinOp {
     }
 
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
+    pub fn syntax(&self) -> &'static str {
         match self {
             Self::Map(bop) => bop.syntax(),
-            Self::Cat => Some("~"),
-            Self::Ind => None,
+            Self::Cat => "~",
+            Self::Ind => "@",
         }
     }
 }
@@ -100,7 +100,7 @@ pub enum VectorUnaOp {
 
 impl VectorUnaOp {
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
+    pub fn syntax(&self) -> &'static str {
         match self {
             Self::Map(uop) => uop.syntax(),
         }
@@ -138,11 +138,11 @@ impl OptionBinOp {
     }
 
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
+    pub fn syntax(&self) -> &'static str {
         match self {
             Self::Map(bop) => bop.syntax(),
-            Self::Cond => Some("?"),
-            Self::Else => Some(":"),
+            Self::Cond => "?",
+            Self::Else => ":",
         }
     }
 }
@@ -156,7 +156,7 @@ pub enum OptionUnaOp {
 
 impl OptionUnaOp {
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
+    pub fn syntax(&self) -> &'static str {
         match self {
             Self::Map(uop) => uop.syntax(),
         }
@@ -190,7 +190,7 @@ impl ScalarBinOp {
     }
 
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
+    pub fn syntax(&self) -> &'static str {
         match self {
             Self::Int(bop) => bop.syntax(),
             Self::Cmp(bop) => bop.syntax(),
@@ -207,7 +207,7 @@ pub enum ScalarUnaOp {
 
 impl ScalarUnaOp {
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
+    pub fn syntax(&self) -> &'static str {
         match self {
             Self::Int(uop) => uop.syntax(),
         }
@@ -237,8 +237,8 @@ impl ScalarIntBinOp {
     }
 
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
-        Some(match self {
+    pub fn syntax(&self) -> &'static str {
+        match self {
             Self::Add => "+",
             Self::Sub => "-",
             Self::Mul => "*",
@@ -250,7 +250,7 @@ impl ScalarIntBinOp {
             Self::XOr => "^",
             Self::ShL => "<<",
             Self::ShR => ">>",
-        })
+        }
     }
 }
 
@@ -261,24 +261,24 @@ impl ScalarCmpBinOp {
     }
 
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
-        Some(match self {
+    pub fn syntax(&self) -> &'static str {
+        match self {
             Self::IsEq => "==",
             Self::IsNE => "!=",
             Self::IsLT => "<",
             Self::IsLE => "<=",
             Self::IsGT => ">",
             Self::IsGE => ">=",
-        })
+        }
     }
 }
 
 impl ScalarIntUnaOp {
     /// The syntax for this operation.
-    pub fn syntax(&self) -> Option<&'static str> {
-        Some(match self {
+    pub fn syntax(&self) -> &'static str {
+        match self {
             Self::Neg => "-",
             Self::Not => "~",
-        })
+        }
     }
 }
