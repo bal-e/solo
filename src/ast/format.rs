@@ -55,6 +55,10 @@ impl<W: fmt::Write> Formatter<W> {
         }
         self.inner.write_str(") ")?;
 
+        self.inner.write_str("-> ")?;
+        self.format_mapped_type(&ast.rett)?;
+        self.inner.write_char(' ')?;
+
         self.format_expr(&**ast.body)
     }
 
@@ -68,8 +72,34 @@ impl<W: fmt::Write> Formatter<W> {
 
     /// Format the AST of a mapped type.
     fn format_mapped_type(&mut self, ast: &MappedType) -> fmt::Result {
-        let _ = ast;
-        self.inner.write_str("<type>")
+        if let Some(StreamPart {}) = ast.stream {
+            self.inner.write_str("[]")?;
+        }
+
+        if let Some(VectorPart { size }) = ast.vector {
+            write!(self.inner, "<{}>", size)?;
+        }
+
+        if let Some(OptionPart {}) = ast.option {
+            self.inner.write_char('?')?;
+        }
+
+        self.format_scalar_type(&ast.scalar)
+    }
+
+    /// Format the AST of a scalar type.
+    fn format_scalar_type(&mut self, ast: &ScalarType) -> fmt::Result {
+        match ast {
+            ScalarType::Int(ast) => self.format_int_type(ast),
+        }
+    }
+
+    /// Format the AST of an integer type.
+    fn format_int_type(&mut self, ast: &IntType) -> fmt::Result {
+        match ast {
+            IntType::U(bits) => write!(self.inner, "u{}", bits),
+            IntType::S(bits) => write!(self.inner, "s{}", bits),
+        }
     }
 
     /// Format the AST of a statement.
