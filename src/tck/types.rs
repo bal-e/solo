@@ -1,3 +1,4 @@
+use core::fmt;
 use core::num::NonZeroU32;
 
 use crate::ast;
@@ -12,6 +13,15 @@ pub struct StreamType {
     pub data: VectorType,
 }
 
+impl fmt::Display for StreamType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(part) = self.part {
+            write!(f, "{}", part)?;
+        }
+        write!(f, "{}", self.data)
+    }
+}
+
 /// A maybe-vector type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct VectorType {
@@ -19,11 +29,29 @@ pub struct VectorType {
     pub data: OptionType,
 }
 
+impl fmt::Display for VectorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(part) = self.part {
+            write!(f, "{}", part)?;
+        }
+        write!(f, "{}", self.data)
+    }
+}
+
 /// A maybe-option type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OptionType {
     pub part: Option<OptionPart>,
     pub data: ScalarType,
+}
+
+impl fmt::Display for OptionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(part) = self.part {
+            write!(f, "{}", part)?;
+        }
+        write!(f, "{}", self.data)
+    }
 }
 
 impl From<ast::MappedType> for StreamType {
@@ -77,6 +105,12 @@ impl TryFrom<StreamType> for types::StreamType {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StreamPart {}
 
+impl fmt::Display for StreamPart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[]")
+    }
+}
+
 impl From<ast::StreamPart> for StreamPart {
     fn from(value: ast::StreamPart) -> Self {
         let ast::StreamPart {} = value;
@@ -105,6 +139,12 @@ pub struct VectorPart {
     pub size: u32,
 }
 
+impl fmt::Display for VectorPart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<{}>", self.size)
+    }
+}
+
 impl From<ast::VectorPart> for VectorPart {
     fn from(value: ast::VectorPart) -> Self {
         Self { size: value.size }
@@ -126,6 +166,12 @@ impl From<VectorPart> for types::VectorPart {
 /// The option component of a type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OptionPart {}
+
+impl fmt::Display for OptionPart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("?")
+    }
+}
 
 impl From<ast::OptionPart> for OptionPart {
     fn from(value: ast::OptionPart) -> Self {
@@ -156,6 +202,16 @@ pub enum ScalarType {
 
     /// An integer type.
     Int(Option<IntType>),
+}
+
+impl fmt::Display for ScalarType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Any => f.write_str("any"),
+            Self::Int(None) => f.write_str("int"),
+            Self::Int(Some(r#type)) => write!(f, "{}", r#type),
+        }
+    }
 }
 
 impl From<ast::ScalarType> for ScalarType {
@@ -197,6 +253,12 @@ pub struct IntType {
     pub size: NonZeroU32,
 }
 
+impl fmt::Display for IntType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.sign, self.size)
+    }
+}
+
 impl From<ast::IntType> for IntType {
     fn from(value: ast::IntType) -> Self {
         match value {
@@ -231,6 +293,15 @@ pub enum IntSign {
     U,
     /// A signed integer.
     S,
+}
+
+impl fmt::Display for IntSign {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::U => f.write_str("u"),
+            Self::S => f.write_str("s"),
+        }
+    }
 }
 
 impl From<types::IntSign> for IntSign {
