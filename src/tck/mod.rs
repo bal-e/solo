@@ -60,12 +60,32 @@ pub fn tck_fn(r#fn: &ast::Function) -> Result<Function<'_>, Error> {
     // Resolve every expression in the body.
     let types = (0 .. num_exprs)
         .map(|i| (i, storage.tvars.find_shorten(&i).unwrap()))
-        .map(|(i, j)| storage.types[i].zip(storage.types[j]))
-        .map(|x| x.map(|(mut i, j)| { i.data.data.data = j.data.data.data; i }))
+        .map(|(i, j)| {
+            let src = storage.types[j];
+            let dst = storage.types[i].as_mut();
+            dst.zip(src).map(|(dst, src)| {
+                dst.data.data.data = src.data.data.data;
+                *dst
+            })
+        })
         .map(|t| t
              .map(ext::StreamType::try_from)
              .unwrap_or(Err(Error::Unresolvable)))
         .collect::<Result<Vec<_>, Error>>()?;
+
+    println!("Types:");
+    let max_digits = (storage.types.len() - 1)
+        .checked_ilog10().unwrap_or(0) as usize + 1;
+    for (i, r#type) in storage.types.iter().enumerate() {
+        let class = storage.tvars.find(&i).unwrap();
+
+        print!("- {:max_digits$}: ", i);
+        match r#type {
+            Some(r#type) => print!("{}", r#type),
+            None => print!("unknown"),
+        };
+        println!(" -> {}", class);
+    }
 
     Ok(Function { ast: r#fn, types })
 }
