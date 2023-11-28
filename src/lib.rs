@@ -11,3 +11,5 @@ pub mod hir;
 
 pub mod ops;
 pub mod types;
+
+pub mod tys;
