@@ -1,3 +1,5 @@
+//! Concrete types in Solo.
+
 use core::num::NonZeroU32;
 
 mod cvt;

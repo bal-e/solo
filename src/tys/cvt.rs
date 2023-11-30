@@ -42,9 +42,9 @@ impl From<fix::ScalarType> for var::ScalarType {
 
 impl From<fix::IntType> for var::IntType {
     fn from(value: fix::IntType) -> Self {
-        Self {
-            sign: Some(value.sign),
-            bits: Some(value.bits),
+        Self::Val {
+            sign: value.sign,
+            bits: value.bits,
         }
     }
 }
@@ -92,6 +92,8 @@ impl TryFrom<var::ScalarType> for fix::ScalarType {
 
     fn try_from(value: var::ScalarType) -> Result<Self, Self::Error> {
         Ok(match value {
+            var::ScalarType::Min => return Err(UnresolvedError),
+            var::ScalarType::Max => return Err(UnresolvedError),
             var::ScalarType::Any => return Err(UnresolvedError),
             var::ScalarType::Int(r#type) => Self::Int(r#type.try_into()?),
         })
@@ -102,9 +104,11 @@ impl TryFrom<var::IntType> for fix::IntType {
     type Error = UnresolvedError;
 
     fn try_from(value: var::IntType) -> Result<Self, Self::Error> {
-        Ok(Self {
-            sign: value.sign.ok_or(UnresolvedError)?,
-            bits: value.bits.ok_or(UnresolvedError)?,
+        Ok(match value {
+            var::IntType::Min => return Err(UnresolvedError),
+            var::IntType::Max => return Err(UnresolvedError),
+            var::IntType::Any => return Err(UnresolvedError),
+            var::IntType::Val { sign, bits } => Self { sign, bits },
         })
     }
 }

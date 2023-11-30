@@ -37,9 +37,3 @@ impl fmt::Display for IntSign {
         }
     }
 }
-
-impl fmt::Display for UnresolvedError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("A type was not fully resolved")
-    }
-}

@@ -1,7 +1,10 @@
+//! Partially resolved types in Solo.
+
 use core::num::NonZeroU32;
 
 mod cvt;
 mod fmt;
+mod sub;
 
 pub use super::{StreamPart, VectorPart, OptionPart, IntSign};
 
@@ -35,6 +38,12 @@ pub struct OptionType {
 /// A partially resolved scalar type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ScalarType {
+    /// The minimum type.
+    Min,
+
+    /// The maximum type.
+    Max,
+
     /// An unknown type.
     Any,
 
@@ -44,7 +53,19 @@ pub enum ScalarType {
 
 /// A partially resolved integer type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct IntType {
-    pub sign: Option<IntSign>,
-    pub bits: Option<NonZeroU32>,
+pub enum IntType {
+    /// The minimum integer type.
+    Min,
+
+    /// The maximum integer type.
+    Max,
+
+    /// An unresolved integer type.
+    Any,
+
+    /// A concrete integer type.
+    Val {
+        sign: IntSign,
+        bits: NonZeroU32,
+    },
 }

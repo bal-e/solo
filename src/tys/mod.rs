@@ -1,9 +1,13 @@
-//! Concrete types in Solo.
-
-use thiserror::Error;
+//! Types in Solo.
 
 pub mod fix;
 pub mod var;
+
+mod err;
+pub use err::*;
+
+mod sub;
+pub use sub::*;
 
 mod cvt;
 mod fmt;
@@ -35,7 +39,3 @@ pub enum IntSign {
     U,
     S,
 }
-
-/// A type was unresolved.
-#[derive(Debug, Error)]
-pub struct UnresolvedError;
