@@ -23,56 +23,56 @@ impl From<StreamType> for OptionType {
     }
 }
 
-impl From<StreamType> for ScalarType {
+impl From<StreamType> for Partial<ScalarType> {
     fn from(value: StreamType) -> Self {
         value.scalar
     }
 }
 
-impl AsRef<StreamPart> for StreamType {
-    fn as_ref(&self) -> &StreamPart {
+impl AsRef<Partial<StreamPart>> for StreamType {
+    fn as_ref(&self) -> &Partial<StreamPart> {
         &self.stream
     }
 }
 
-impl AsRef<VectorPart> for StreamType {
-    fn as_ref(&self) -> &VectorPart {
+impl AsRef<Partial<VectorPart>> for StreamType {
+    fn as_ref(&self) -> &Partial<VectorPart> {
         &self.vector
     }
 }
 
-impl AsRef<OptionPart> for StreamType {
-    fn as_ref(&self) -> &OptionPart {
+impl AsRef<Partial<OptionPart>> for StreamType {
+    fn as_ref(&self) -> &Partial<OptionPart> {
         &self.option
     }
 }
 
-impl AsRef<ScalarType> for StreamType {
-    fn as_ref(&self) -> &ScalarType {
+impl AsRef<Partial<ScalarType>> for StreamType {
+    fn as_ref(&self) -> &Partial<ScalarType> {
         &self.scalar
     }
 }
 
-impl AsMut<StreamPart> for StreamType {
-    fn as_mut(&mut self) -> &mut StreamPart {
+impl AsMut<Partial<StreamPart>> for StreamType {
+    fn as_mut(&mut self) -> &mut Partial<StreamPart> {
         &mut self.stream
     }
 }
 
-impl AsMut<VectorPart> for StreamType {
-    fn as_mut(&mut self) -> &mut VectorPart {
+impl AsMut<Partial<VectorPart>> for StreamType {
+    fn as_mut(&mut self) -> &mut Partial<VectorPart> {
         &mut self.vector
     }
 }
 
-impl AsMut<OptionPart> for StreamType {
-    fn as_mut(&mut self) -> &mut OptionPart {
+impl AsMut<Partial<OptionPart>> for StreamType {
+    fn as_mut(&mut self) -> &mut Partial<OptionPart> {
         &mut self.option
     }
 }
 
-impl AsMut<ScalarType> for StreamType {
-    fn as_mut(&mut self) -> &mut ScalarType {
+impl AsMut<Partial<ScalarType>> for StreamType {
+    fn as_mut(&mut self) -> &mut Partial<ScalarType> {
         &mut self.scalar
     }
 }
@@ -88,76 +88,76 @@ impl From<VectorType> for OptionType {
     }
 }
 
-impl From<VectorType> for ScalarType {
+impl From<VectorType> for Partial<ScalarType> {
     fn from(value: VectorType) -> Self {
         value.scalar
     }
 }
 
-impl AsRef<VectorPart> for VectorType {
-    fn as_ref(&self) -> &VectorPart {
+impl AsRef<Partial<VectorPart>> for VectorType {
+    fn as_ref(&self) -> &Partial<VectorPart> {
         &self.vector
     }
 }
 
-impl AsRef<OptionPart> for VectorType {
-    fn as_ref(&self) -> &OptionPart {
+impl AsRef<Partial<OptionPart>> for VectorType {
+    fn as_ref(&self) -> &Partial<OptionPart> {
         &self.option
     }
 }
 
-impl AsRef<ScalarType> for VectorType {
-    fn as_ref(&self) -> &ScalarType {
+impl AsRef<Partial<ScalarType>> for VectorType {
+    fn as_ref(&self) -> &Partial<ScalarType> {
         &self.scalar
     }
 }
 
-impl AsMut<VectorPart> for VectorType {
-    fn as_mut(&mut self) -> &mut VectorPart {
+impl AsMut<Partial<VectorPart>> for VectorType {
+    fn as_mut(&mut self) -> &mut Partial<VectorPart> {
         &mut self.vector
     }
 }
 
-impl AsMut<OptionPart> for VectorType {
-    fn as_mut(&mut self) -> &mut OptionPart {
+impl AsMut<Partial<OptionPart>> for VectorType {
+    fn as_mut(&mut self) -> &mut Partial<OptionPart> {
         &mut self.option
     }
 }
 
-impl AsMut<ScalarType> for VectorType {
-    fn as_mut(&mut self) -> &mut ScalarType {
+impl AsMut<Partial<ScalarType>> for VectorType {
+    fn as_mut(&mut self) -> &mut Partial<ScalarType> {
         &mut self.scalar
     }
 }
 
 // --- OptionType --- //
 
-impl From<OptionType> for ScalarType {
+impl From<OptionType> for Partial<ScalarType> {
     fn from(value: OptionType) -> Self {
         value.scalar
     }
 }
 
-impl AsRef<OptionPart> for OptionType {
-    fn as_ref(&self) -> &OptionPart {
+impl AsRef<Partial<OptionPart>> for OptionType {
+    fn as_ref(&self) -> &Partial<OptionPart> {
         &self.option
     }
 }
 
-impl AsRef<ScalarType> for OptionType {
-    fn as_ref(&self) -> &ScalarType {
+impl AsRef<Partial<ScalarType>> for OptionType {
+    fn as_ref(&self) -> &Partial<ScalarType> {
         &self.scalar
     }
 }
 
-impl AsMut<OptionPart> for OptionType {
-    fn as_mut(&mut self) -> &mut OptionPart {
+impl AsMut<Partial<OptionPart>> for OptionType {
+    fn as_mut(&mut self) -> &mut Partial<OptionPart> {
         &mut self.option
     }
 }
 
-impl AsMut<ScalarType> for OptionType {
-    fn as_mut(&mut self) -> &mut ScalarType {
+impl AsMut<Partial<ScalarType>> for OptionType {
+    fn as_mut(&mut self) -> &mut Partial<ScalarType> {
         &mut self.scalar
     }
 }

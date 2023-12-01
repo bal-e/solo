@@ -1,13 +1,11 @@
 //! Concrete types in Solo.
 
-use core::num::NonZeroU32;
-
 mod cvt;
 mod fmt;
 
-pub use super::{StreamPart, VectorPart, OptionPart, IntSign};
+pub use super::{StreamPart, VectorPart, OptionPart, IntType};
 
-/// A resolved type with all available mapping components.
+/// A resolved type with mapping components.
 pub type MappedType = StreamType;
 
 /// A resolved type with a stream component.
@@ -39,11 +37,4 @@ pub struct OptionType {
 pub enum ScalarType {
     /// An integer type.
     Int(IntType),
-}
-
-/// A resolved integer type.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct IntType {
-    pub sign: IntSign,
-    pub bits: NonZeroU32,
 }

@@ -17,6 +17,17 @@ pub struct BoundResult<T> {
     /// The error in bounding, if any.
     pub error: Option<BoundError>,
 
-    /// The underlying type.
-    pub inner: T,
+    /// The underlying value.
+    pub value: T,
+}
+
+impl<T> BoundResult<T> {
+    /// Map over the underlying value.
+    pub fn map<R, F>(self, f: F) -> BoundResult<R>
+    where F: FnOnce(T) -> R {
+        BoundResult {
+            error: self.error,
+            value: (f)(self.value),
+        }
+    }
 }

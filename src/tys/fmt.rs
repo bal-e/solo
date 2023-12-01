@@ -29,6 +29,12 @@ impl fmt::Display for OptionPart {
     }
 }
 
+impl fmt::Display for IntType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.sign, self.bits)
+    }
+}
+
 impl fmt::Display for IntSign {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

@@ -1,5 +1,7 @@
 //! Types in Solo.
 
+use core::num::NonZeroU32;
+
 pub mod fix;
 pub mod var;
 
@@ -31,6 +33,13 @@ pub enum VectorPart {
 pub enum OptionPart {
     Some {},
     None,
+}
+
+/// An integer type.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct IntType {
+    pub sign: IntSign,
+    pub bits: NonZeroU32,
 }
 
 /// The sign of an integer type.

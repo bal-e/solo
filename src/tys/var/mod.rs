@@ -1,71 +1,76 @@
 //! Partially resolved types in Solo.
 
-use core::num::NonZeroU32;
-
 mod cvt;
 mod fmt;
+
 mod sub;
+pub use sub::*;
 
-pub use super::{StreamPart, VectorPart, OptionPart, IntSign};
+pub use super::{StreamPart, VectorPart, OptionPart, IntType};
+pub use super::err::UnresolvedError;
 
-/// A partially resolved type with all available mapping components.
+/// A partially resolved type with mapping components.
 pub type MappedType = StreamType;
 
 /// A partially resolved type with a stream component.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamType {
-    pub stream: StreamPart,
-    pub vector: VectorPart,
-    pub option: OptionPart,
-    pub scalar: ScalarType,
+    pub stream: Partial<StreamPart>,
+    pub vector: Partial<VectorPart>,
+    pub option: Partial<OptionPart>,
+    pub scalar: Partial<ScalarType>,
 }
 
 /// A partially resolved type with a vector component.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VectorType {
-    pub vector: VectorPart,
-    pub option: OptionPart,
-    pub scalar: ScalarType,
+    pub vector: Partial<VectorPart>,
+    pub option: Partial<OptionPart>,
+    pub scalar: Partial<ScalarType>,
 }
 
 /// A partially resolved type with an option component.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OptionType {
-    pub option: OptionPart,
-    pub scalar: ScalarType,
+    pub option: Partial<OptionPart>,
+    pub scalar: Partial<ScalarType>,
 }
 
 /// A partially resolved scalar type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ScalarType {
-    /// The minimum type.
-    Min,
-
-    /// The maximum type.
-    Max,
-
-    /// An unknown type.
-    Any,
-
     /// An integer type.
-    Int(IntType),
+    Int(Partial<IntType>),
 }
 
-/// A partially resolved integer type.
+/// A partially resolved object.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum IntType {
-    /// The minimum integer type.
+pub enum Partial<T> {
+    /// The minimum object.
     Min,
 
-    /// The maximum integer type.
+    /// The maximum object.
     Max,
 
-    /// An unresolved integer type.
+    /// An unresolved object.
     Any,
 
-    /// A concrete integer type.
-    Val {
-        sign: IntSign,
-        bits: NonZeroU32,
-    },
+    /// A concrete object.
+    Val(T),
+}
+
+impl<T> Partial<T> {
+    /// Extract a concrete object or fail.
+    pub fn val(self) -> Result<T, UnresolvedError> {
+        match self {
+            Self::Val(val) => Ok(val),
+            _ => Err(UnresolvedError),
+        }
+    }
+}
+
+impl<T> From<T> for Partial<T> {
+    fn from(value: T) -> Self {
+        Self::Val(value)
+    }
 }
