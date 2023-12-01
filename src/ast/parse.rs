@@ -1,153 +1,103 @@
 //! Parsing Solo code into an AST.
 
-use std::iter;
-use std::ops::RangeFrom;
-use std::rc::Rc;
+use core::iter;
+use core::num::NonZeroU32;
 
 use pest::{self, iterators::{Pair, Pairs}};
 use rustc_hash::FxHashMap;
 use thiserror::Error;
 
+use crate::prec::*;
 use crate::src::Rule;
 
-use super::{*, ops::*};
+use super::{soa::*, *};
 
-/// Parse the given module.
-pub fn parse_mod(
-    input: Pair<'_, Rule>,
-    name: String,
-    source: ModuleSource,
-) -> Result<Module> {
-    let mut parser = Parser::default();
-    parser.parse_mod(input, name, source)
-}
-
-struct Parser {
-    /// Available variable IDs.
-    variable_ids: RangeFrom<u32>,
-
-    /// Available statement IDs.
-    stmt_ids: RangeFrom<u32>,
-
-    /// Available expression IDs.
-    expr_ids: RangeFrom<u32>,
-
-    /// A stack of scopes used for name resolution.
-    scopes: Vec<FxHashMap<String, Rc<Stored<Variable>>>>,
-}
-
-impl Default for Parser {
-    fn default() -> Self {
-        Self {
-            variable_ids: 0 ..,
-            stmt_ids: 0 ..,
-            expr_ids: 0 ..,
-            scopes: Vec::new(),
-        }
-    }
-}
-
-impl Parser {
-    /// Parse a module.
-    fn parse_mod(
-        &mut self,
-        input: Pair<'_, Rule>,
+impl Module {
+    /// Parse a node from source code.
+    pub fn parse(
         name: String,
-        source: ModuleSource,
-    ) -> Result<Module> {
-        assert_eq!(Rule::r#mod, input.as_rule());
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::r#mod, i.as_rule());
 
-        assert!(self.scopes.is_empty());
-        self.scopes.push(FxHashMap::default());
+        p.scoped(|p| {
+            let mut fns = i.into_inner()
+                .filter(|i| i.as_rule() == Rule::r#fn);
+            let functions = FunctionsMut::try_put_seq_rec(p, |p| {
+                fns.next()
+                    .map(|i| Function::parse(i, p))
+                    .transpose()
+            })?;
 
-        let functions = input.into_inner()
-            .filter(|p| p.as_rule() == Rule::r#fn)
-            .map(|p| self.parse_fn(p))
-            .collect::<Result<Vec<_>>>()?;
-
-        self.scopes.pop();
-
-        Ok(Module { name, functions, source })
-    }
-
-    /// Parse a function.
-    fn parse_fn(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Function> {
-        assert_eq!(Rule::r#fn, input.as_rule());
-
-        // Begin function scope.
-        self.scopes.push(FxHashMap::default());
-
-        let variable_id_beg = self.variable_ids.start;
-        let stmt_id_beg = self.stmt_ids.start;
-        let expr_id_beg = self.expr_ids.start;
-
-        let mut pairs = input.into_inner().peekable();
-        assert_eq!(Rule::fn_kw, pairs.next().unwrap().as_rule());
-        let name = self.parse_name(pairs.next().unwrap());
-        let args = iter::from_fn(|| pairs
-            .next_if(|p| p.as_rule() == Rule::fn_arg)
-            .map(|p| self.parse_fn_arg(p)))
-            .collect::<Result<Vec<_>>>()?;
-        let rett = self.parse_type(pairs.next().unwrap())?;
-        let body = self.parse_expr_blk(pairs.next().unwrap())?;
-        let body = Box::new(self.store_expr(body));
-
-        let variable_id_end = self.variable_ids.start;
-        let stmt_id_end = self.stmt_ids.start;
-        let expr_id_end = self.expr_ids.start;
-
-        // End function scope.
-        self.scopes.pop();
-
-        let variable_ids = variable_id_beg .. variable_id_end;
-        let stmt_ids = stmt_id_beg .. stmt_id_end;
-        let expr_ids = expr_id_beg .. expr_id_end;
-
-        Ok(Function {
-            name, args, rett, body,
-            variable_ids, stmt_ids, expr_ids,
+            Ok(Module { name, functions })
         })
     }
+}
 
-    /// Parse a function argument.
-    fn parse_fn_arg(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Argument> {
-        assert_eq!(Rule::fn_arg, input.as_rule());
+impl Function {
+    /// Parse a node from source code.
+    pub fn parse(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::r#fn, i.as_rule());
 
-        let mut pairs = input.into_inner();
-        let name = self.parse_name(pairs.next().unwrap());
-        let r#type = self.parse_type(pairs.next().unwrap())?;
+        p.scoped(|p| {
+            let mut pairs = i.into_inner().peekable();
+            assert_eq!(Rule::fn_kw, pairs.next().unwrap().as_rule());
+            let name = pairs.next().unwrap().as_str().to_string();
+            let args = ArgumentsMut::try_put_seq_rec(p, |p| {
+                pairs.next_if(|i| i.as_rule() == Rule::fn_arg)
+                    .map(|i| Argument::parse(i, p))
+                    .transpose()
+            })?;
+            let rett = MappedType::parse(pairs.next().unwrap(), p)?;
+            let body = Expr::parse(pairs.next().unwrap(), p)?;
+            let body = p.storage.exprs.put(body);
+
+            Ok(Function { name, args, rett, body })
+        })
+    }
+}
+
+impl Argument {
+    /// Parse a node from source code.
+    pub fn parse(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::fn_arg, i.as_rule());
+
+        let mut pairs = i.into_inner();
+        let name = pairs.next().unwrap().as_str().to_string();
+        let r#type = MappedType::parse(pairs.next().unwrap(), p)?;
 
         // Register the argument as an expression and as a binding.
-        let expr = Box::new(self.store_expr(Expr::Arg));
-        let variable = Variable { name: name.clone(), expr };
-        let variable = Rc::new(self.store_variable(variable));
-        self.scopes.last_mut().unwrap().insert(name, variable.clone());
+        let expr = p.storage.exprs.put(Expr::Arg);
+        let variable = p.def_var(Variable { name, expr });
 
         Ok(Argument { variable, r#type })
     }
+}
 
-    /// Parse a type.
-    fn parse_type(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<MappedType> {
-        assert_eq!(Rule::r#type, input.as_rule());
+impl MappedType {
+    /// Parse a node from source code.
+    pub fn parse(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::r#type, i.as_rule());
 
-        let input_info = (input.as_str(), input.as_span());
-        let mut pairs = input.into_inner().peekable();
+        let input_info = (i.as_str(), i.as_span());
+        let mut pairs = i.into_inner().peekable();
         let stream = pairs
-            .next_if(|p| p.as_rule() == Rule::type_stream)
-            .map(|_| StreamPart {});
+            .next_if(|i| i.as_rule() == Rule::type_stream)
+            .map_or(StreamPart::None, |_| StreamPart::Some {});
         let vector = pairs
-            .next_if(|p| p.as_rule() == Rule::type_vector)
-            .map(|p| p.into_inner().next().unwrap().as_str())
-            .map(|p| p.parse::<u32>().map_err(|err| {
+            .next_if(|i| i.as_rule() == Rule::type_vector)
+            .map(|i| i.into_inner().next().unwrap().as_str())
+            .map(|i| i.parse::<u32>().map_err(|err| {
                 let message = format!(
                     "The vector size component of '{}' is invalid: {}",
                     input_info.0, err);
@@ -156,123 +106,148 @@ impl Parser {
                     input_info.1))
             }))
             .transpose()?
-            .map(|size| VectorPart { size });
+            .map_or(VectorPart::None, |size| VectorPart::Some { size });
         let option = pairs
-            .next_if(|p| p.as_rule() == Rule::type_option)
-            .map(|_| OptionPart {});
-        let scalar = self.parse_type_scalar(pairs.next().unwrap())?;
+            .next_if(|i| i.as_rule() == Rule::type_option)
+            .map_or(OptionPart::None, |_| OptionPart::Some {});
+        let scalar = ScalarType::parse(pairs.next().unwrap(), p)?;
 
         Ok(MappedType { stream, vector, option, scalar })
     }
+}
 
-    /// Parse a scalar type.
-    fn parse_type_scalar(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<ScalarType> {
-        assert_eq!(Rule::type_scalar, input.as_rule());
+impl ScalarType {
+    /// Parse a node from source code.
+    pub fn parse(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::type_scalar, i.as_rule());
 
-        match input.into_inner().next().unwrap() {
+        match i.into_inner().next().unwrap() {
             t if t.as_rule() == Rule::type_int =>
-                self.parse_type_int(t).map(ScalarType::Int),
+                IntType::parse(t, p).map(ScalarType::Int),
             _ => unreachable!(),
         }
     }
+}
 
-    /// Parse an integer scalar type.
-    fn parse_type_int(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<IntType> {
-        assert_eq!(Rule::type_int, input.as_rule());
+impl IntType {
+    /// Parse a node from source code.
+    pub fn parse(
+        i: Pair<'_, Rule>,
+        _: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::type_int, i.as_rule());
 
-        let (maker, size): (fn(_) -> _, _) = match input.as_str().split_at(1) {
-            ("u", x) => (IntType::U, x),
-            ("s", x) => (IntType::S, x),
+        let (sign, bits) = match i.as_str().split_at(1) {
+            ("u", x) => (IntSign::U, x),
+            ("s", x) => (IntSign::S, x),
             _ => unreachable!(),
         };
 
-        let size = size.parse::<NonZeroU32>().map_err(|err| {
+        let bits = bits.parse::<NonZeroU32>().map_err(|err| {
             let message = format!(
                 "The size component of '{}' is invalid: {}",
-                input.as_str(), err);
+                i.as_str(), err);
             Error::Grammar(pest::error::Error::new_from_span(
                 pest::error::ErrorVariant::CustomError { message },
-                input.as_span()))
+                i.as_span()))
         })?;
 
-        Ok((maker)(size))
+        Ok(IntType { sign, bits })
+    }
+}
+
+impl Stmt {
+    /// Parse a node from source code.
+    pub fn parse(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::stmt, i.as_rule());
+
+        let i = i.into_inner().next().unwrap();
+        match i.as_rule() {
+            Rule::stmt_let => {
+                let mut pairs = i.into_inner();
+                let name = pairs.next().unwrap().as_str().to_string();
+                let expr = Expr::parse(pairs.next().unwrap(), p)?;
+                let expr = p.storage.exprs.put(expr);
+
+                // Register the new binding.
+                let variable = p.def_var(Variable { name, expr });
+
+                Ok(Stmt::Let(variable))
+            },
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Expr {
+    /// Parse a node from source code.
+    pub fn parse(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::expr, i.as_rule());
+        Self::parse_inner(None, &mut i.into_inner().peekable(), p)
     }
 
-    /// Parse an expression.
-    fn parse_expr(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Expr> {
-        assert_eq!(Rule::expr, input.as_rule());
-        self.parse_expr_inner(None, &mut input.into_inner().peekable())
-    }
-
-    fn parse_expr_inner(
-        &mut self,
+    fn parse_inner(
         prev: Option<&Pair<'_, Rule>>,
-        input: &mut iter::Peekable<Pairs<'_, Rule>>,
-    ) -> Result<Expr> {
+        i: &mut iter::Peekable<Pairs<'_, Rule>>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
         // The expression parsed thus far.
-        let mut expr = self.parse_expr_unit(input.next().unwrap())?;
+        let mut expr = Self::parse_unit(i.next().unwrap(), p)?;
 
         // Try parsing another binary operation.
-        while let Some(next) = input.peek() {
+        while let Some(next) = i.peek() {
             // Test that the operator is part of this expression.
             if Self::binop_cmp(prev, next)? == Assoc::Left {
                 break;
             }
 
-            let next = input.next().unwrap();
-            let rhs = self.parse_expr_inner(Some(&next), input)?;
-            let rhs = Box::new(self.store_expr(rhs));
-
-            let stream = |o| o;
-            let vector = |o| StreamBinOp::Map(o);
-            let option = |o| (vector)(VectorBinOp::Map(o));
-            let scalar = |o| (option)(OptionBinOp::Map(o));
-            let scalar_int = |o| (scalar)(ScalarBinOp::Int(o));
-            let scalar_cmp = |o| (scalar)(ScalarBinOp::Cmp(o));
+            let next = i.next().unwrap();
+            let rhs = Self::parse_inner(Some(&next), i, p)?;
+            let rhs = p.storage.exprs.put(rhs);
 
             let bop = match next.into_inner().next().unwrap().as_rule() {
-                Rule::op_add => (scalar_int)(ScalarIntBinOp::Add),
-                Rule::op_sub => (scalar_int)(ScalarIntBinOp::Sub),
-                Rule::op_mul => (scalar_int)(ScalarIntBinOp::Mul),
-                Rule::op_div => (scalar_int)(ScalarIntBinOp::Div),
-                Rule::op_rem => (scalar_int)(ScalarIntBinOp::Rem),
+                Rule::op_add => BinOp::Int(IntBinOp::Add),
+                Rule::op_sub => BinOp::Int(IntBinOp::Sub),
+                Rule::op_mul => BinOp::Int(IntBinOp::Mul),
+                Rule::op_div => BinOp::Int(IntBinOp::Div),
+                Rule::op_rem => BinOp::Int(IntBinOp::Rem),
 
-                Rule::op_and => (scalar_int)(ScalarIntBinOp::And),
-                Rule::op_ior => (scalar_int)(ScalarIntBinOp::IOr),
-                Rule::op_xor => (scalar_int)(ScalarIntBinOp::XOr),
-                Rule::op_shl => (scalar_int)(ScalarIntBinOp::ShL),
-                Rule::op_shr => (scalar_int)(ScalarIntBinOp::ShR),
+                Rule::op_and => BinOp::Int(IntBinOp::And),
+                Rule::op_ior => BinOp::Int(IntBinOp::IOr),
+                Rule::op_xor => BinOp::Int(IntBinOp::XOr),
+                Rule::op_shl => BinOp::Int(IntBinOp::ShL),
+                Rule::op_shr => BinOp::Int(IntBinOp::ShR),
 
-                Rule::op_cat => (vector)(VectorBinOp::Cat),
-                Rule::op_ind => (vector)(VectorBinOp::Ind),
-                Rule::op_exp => (stream)(StreamBinOp::Exp),
-                Rule::op_red => (stream)(StreamBinOp::Red),
+                Rule::op_cat => BinOp::Cat,
+                Rule::op_ind => BinOp::Ind,
+                Rule::op_exp => BinOp::Exp,
+                Rule::op_red => BinOp::Red,
 
-                Rule::op_iseq => (scalar_cmp)(ScalarCmpBinOp::IsEq),
-                Rule::op_isne => (scalar_cmp)(ScalarCmpBinOp::IsNE),
-                Rule::op_islt => (scalar_cmp)(ScalarCmpBinOp::IsLT),
-                Rule::op_isle => (scalar_cmp)(ScalarCmpBinOp::IsLE),
-                Rule::op_isgt => (scalar_cmp)(ScalarCmpBinOp::IsGT),
-                Rule::op_isge => (scalar_cmp)(ScalarCmpBinOp::IsGE),
+                Rule::op_iseq => BinOp::Cmp(CmpBinOp::IsEq),
+                Rule::op_isne => BinOp::Cmp(CmpBinOp::IsNE),
+                Rule::op_islt => BinOp::Cmp(CmpBinOp::IsLT),
+                Rule::op_isle => BinOp::Cmp(CmpBinOp::IsLE),
+                Rule::op_isgt => BinOp::Cmp(CmpBinOp::IsGT),
+                Rule::op_isge => BinOp::Cmp(CmpBinOp::IsGE),
 
-                Rule::op_cond => (option)(OptionBinOp::Cond),
-                Rule::op_else => (option)(OptionBinOp::Else),
+                Rule::op_cond => BinOp::Cond,
+                Rule::op_else => BinOp::Else,
 
                 _ => unreachable!(),
             };
 
             // Construct the new binary expression.
-            let lhs = Box::new(self.store_expr(expr));
-            expr = Expr::Bin(bop, [lhs, rhs]);
+            let lhs = p.storage.exprs.put(expr);
+            expr = Self::Bin(bop, [lhs, rhs]);
         }
 
         Ok(expr)
@@ -282,7 +257,7 @@ impl Parser {
     fn binop_cmp(
         lhs: Option<&Pair<'_, Rule>>,
         rhs: &Pair<'_, Rule>,
-    ) -> Result<Assoc> {
+    ) -> Result<Assoc, Error> {
         let lhs_prec = lhs.map_or(Prec::Min, Self::binop_prec);
         if let Some(assoc) = Prec::cmp(lhs_prec, Self::binop_prec(rhs)) {
             // The operators are compatible.
@@ -322,42 +297,38 @@ impl Parser {
     }
 
     /// Parse an indivisible expression.
-    fn parse_expr_unit(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Expr> {
-        assert_eq!(Rule::expr_unit, input.as_rule());
-        let mut pairs = input.into_inner().rev();
+    fn parse_unit(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::expr_unit, i.as_rule());
+        let mut pairs = i.into_inner().rev();
 
-        let expr = self.parse_expr_sufs(pairs.next().unwrap())?;
-        Ok(pairs.fold(expr, |expr, uop| {
+        let expr = Self::parse_sufs(pairs.next().unwrap(), p)?;
+        Ok(pairs.fold(expr, |src, uop| {
             assert_eq!(Rule::op_pre, uop.as_rule());
             let uop = uop.into_inner().next().unwrap();
 
-            let vector = |o| StreamUnaOp::Map(o);
-            let option = |o| (vector)(VectorUnaOp::Map(o));
-            let scalar = |o| (option)(OptionUnaOp::Map(o));
-            let scalar_int = |o| (scalar)(ScalarUnaOp::Int(o));
-
             let uop = match uop.as_rule() {
-                Rule::op_neg => (scalar_int)(ScalarIntUnaOp::Neg),
-                Rule::op_not => (scalar_int)(ScalarIntUnaOp::Not),
+                Rule::op_neg => UnaOp::Int(IntUnaOp::Neg),
+                Rule::op_not => UnaOp::Int(IntUnaOp::Not),
                 _ => unreachable!(),
             };
 
-            Expr::Una(uop, Box::new(self.store_expr(expr)))
+            let src = p.storage.exprs.put(src);
+            Self::Una(uop, [src])
         }))
     }
 
     /// Parse an indivisible expression without prefixes.
-    fn parse_expr_sufs(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Expr> {
-        assert_eq!(Rule::expr_sufs, input.as_rule());
-        let mut pairs = input.into_inner();
+    fn parse_sufs(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::expr_sufs, i.as_rule());
+        let mut pairs = i.into_inner();
 
-        let expr = self.parse_atom(pairs.next().unwrap())?;
+        let expr = Self::parse_atom(pairs.next().unwrap(), p)?;
         pairs.try_fold(expr, |_expr, op| {
             assert_eq!(Rule::op_suf, op.as_rule());
             let op = op.into_inner().next().unwrap();
@@ -369,145 +340,124 @@ impl Parser {
 
     /// Parse an atomic expression.
     fn parse_atom(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Expr> {
-        assert_eq!(Rule::atom, input.as_rule());
-        let inner = input.into_inner().next().unwrap();
-        Ok(match inner.as_rule() {
-            Rule::expr_int => self.parse_expr_int(inner),
-            Rule::expr_cst => self.parse_expr_cst(inner)?,
-            Rule::expr_var => self.parse_expr_var(inner)?,
-            Rule::expr_blk => self.parse_expr_blk(inner)?,
-            Rule::expr => self.parse_expr(inner)?,
-            _ => unreachable!(),
-        })
-    }
-
-    /// Parse an integer literal expression.
-    fn parse_expr_int(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Expr {
-        assert_eq!(Rule::expr_int, input.as_rule());
-        Expr::Int(input.as_str().parse().unwrap())
-    }
-
-    /// Parse a cast expression.
-    fn parse_expr_cst(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Expr> {
-        assert_eq!(Rule::expr_cst, input.as_rule());
-        let mut pairs = input.into_inner();
-
-        let r#type = self.parse_type(pairs.next().unwrap())?;
-        let expr = self.parse_expr_unit(pairs.next().unwrap())?;
-        let expr = Box::new(self.store_expr(expr));
-        Ok(Expr::Cast(r#type, expr))
-    }
-
-    /// Parse a variable reference expression.
-    fn parse_expr_var(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Expr> {
-        assert_eq!(Rule::expr_var, input.as_rule());
-
-        let name = self.parse_name(input.into_inner().next().unwrap());
-
-        // Resolve the variable identifier within the innermost scope.
-        let variable = self.scopes.iter().rev()
-            .find_map(|s| s.get(&name).cloned())
-            .ok_or_else(|| Error::Unresolved(name))?;
-
-        Ok(Expr::Var(variable))
-    }
-
-    /// Parse a block expression.
-    fn parse_expr_blk(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Expr> {
-        assert_eq!(Rule::expr_blk, input.as_rule());
-        let mut pairs = input.into_inner().peekable();
-
-        // Begin block scope.
-        self.scopes.push(FxHashMap::default());
-
-        let stmts = iter::from_fn(|| pairs
-            .next_if(|p| p.as_rule() == Rule::stmt))
-            .map(|p| self.parse_stmt(p)
-                 .map(|s| self.store_stmt(s)))
-            .collect::<Result<Vec<_>>>()?;
-        let rexpr = self.parse_expr(pairs.next().unwrap())?;
-        let rexpr = Box::new(self.store_expr(rexpr));
-
-        // End block scope.
-        self.scopes.pop();
-
-        Ok(Expr::Blk { stmts, rexpr })
-    }
-
-    /// Parse a statement.
-    fn parse_stmt(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Stmt> {
-        assert_eq!(Rule::stmt, input.as_rule());
-
-        let inner = input.into_inner().next().unwrap();
-        match inner.as_rule() {
-            Rule::stmt_let => self.parse_stmt_let(inner),
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Expr, Error> {
+        assert_eq!(Rule::atom, i.as_rule());
+        let i = i.into_inner().next().unwrap();
+        match i.as_rule() {
+            Rule::expr_int => Self::parse_int(i, p),
+            Rule::expr_cst => Self::parse_cst(i, p),
+            Rule::expr_var => Self::parse_var(i, p),
+            Rule::expr_blk => Self::parse_blk(i, p),
+            Rule::expr => Self::parse(i, p),
             _ => unreachable!(),
         }
     }
 
-    /// Parse a let statement.
-    fn parse_stmt_let(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> Result<Stmt> {
-        assert_eq!(Rule::stmt_let, input.as_rule());
-        let mut pairs = input.into_inner();
-
-        let name = self.parse_name(pairs.next().unwrap());
-        let expr = self.parse_expr(pairs.next().unwrap())?;
-        let expr = Box::new(self.store_expr(expr));
-
-        // Register the new binding.
-        let variable = Variable { name: name.clone(), expr };
-        let variable = Rc::new(self.store_variable(variable));
-        self.scopes.last_mut().unwrap().insert(name, variable.clone());
-
-        Ok(Stmt::Let(variable))
+    /// Parse an integer literal expression.
+    fn parse_int(
+        i: Pair<'_, Rule>,
+        _: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::expr_int, i.as_rule());
+        Ok(Self::Int(i.as_str().parse().unwrap()))
     }
 
-    /// Parse a name.
-    fn parse_name(
-        &mut self,
-        input: Pair<'_, Rule>,
-    ) -> String {
-        assert_eq!(Rule::name, input.as_rule());
-        input.as_str().to_string()
+    /// Parse a cast expression.
+    fn parse_cst(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::expr_cst, i.as_rule());
+        let mut pairs = i.into_inner();
+
+        let r#type = MappedType::parse(pairs.next().unwrap(), p)?;
+        let expr = Expr::parse_unit(pairs.next().unwrap(), p)?;
+        let expr = p.storage.exprs.put(expr);
+
+        Ok(Self::Cast(r#type, expr))
     }
 
-    /// Store a variable.
-    fn store_variable(&mut self, variable: Variable) -> Stored<Variable> {
-        let ident = self.variable_ids.next().unwrap();
-        Stored { ident, inner: variable }
+    /// Parse a variable reference expression.
+    fn parse_var(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::expr_var, i.as_rule());
+
+        let name = i.into_inner().next().unwrap().as_str().to_string();
+
+        // Resolve the variable identifier within the innermost scope.
+        let variable = p.get_var(&name)
+            .ok_or_else(|| Error::Unresolved(name))?;
+
+        Ok(Self::Var(variable))
     }
 
-    /// Store a statement.
-    fn store_stmt(&mut self, stmt: Stmt) -> Stored<Stmt> {
-        let ident = self.stmt_ids.next().unwrap();
-        Stored { ident, inner: stmt }
+    /// Parse a block expression.
+    fn parse_blk(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::expr_blk, i.as_rule());
+        let mut pairs = i.into_inner().peekable();
+
+        p.scoped(|p| {
+            let stmts = StmtsMut::try_put_seq_rec(p, |p| {
+                pairs
+                    .next_if(|i| i.as_rule() == Rule::stmt)
+                    .map(|i| Stmt::parse(i, p))
+                    .transpose()
+            })?;
+            let rexpr = Expr::parse(pairs.next().unwrap(), p)?;
+            let rexpr = p.storage.exprs.put(rexpr);
+            Ok(Self::Blk { stmts, rexpr })
+        })
+    }
+}
+
+/// A parser of grammatical Solo code.
+#[derive(Default)]
+pub struct Parser {
+    /// Storage for the AST being constructed.
+    pub storage: StorageMut,
+
+    /// A stack of scopes used for name resolution.
+    scopes: Vec<FxHashMap<String, ID<Variable>>>,
+}
+
+impl Parser {
+    /// Execute code within a new scope.
+    pub fn scoped<R, F>(&mut self, f: F) -> R
+    where F: FnOnce(&mut Self) -> R {
+        self.scopes.push(FxHashMap::default());
+        let result = (f)(self);
+        self.scopes.pop();
+        result
     }
 
-    /// Store an expression.
-    fn store_expr(&mut self, expr: Expr) -> Stored<Expr> {
-        let ident = self.expr_ids.next().unwrap();
-        Stored { ident, inner: expr }
+    /// Define a variable for the current scope.
+    pub fn def_var(&mut self, v: Variable) -> ID<Variable> {
+        let name = v.name.clone();
+        let id = self.storage.variables.put(v);
+        self.scopes.last_mut()
+            .expect("Variables can only be defined within scopes")
+            .insert(name, id);
+        id
+    }
+
+    /// Find the variable of the given name.
+    pub fn get_var(&self, n: &str) -> Option<ID<Variable>> {
+        self.scopes.iter().rev()
+            .find_map(|s| s.get(n).copied())
+    }
+}
+
+impl<T> AsMut<T> for Parser
+where StorageMut: AsMut<T> {
+    fn as_mut(&mut self) -> &mut T {
+        self.storage.as_mut()
     }
 }
 
@@ -520,6 +470,3 @@ pub enum Error {
     #[error("The variable '{0}' could not be found")]
     Unresolved(String),
 }
-
-/// A parsing result.
-pub type Result<T> = std::result::Result<T, Error>;

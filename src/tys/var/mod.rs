@@ -6,7 +6,7 @@ mod fmt;
 mod sub;
 pub use sub::*;
 
-pub use super::{StreamPart, VectorPart, OptionPart, IntType};
+pub use super::{StreamPart, VectorPart, OptionPart, IntType, IntSign};
 pub use super::err::UnresolvedError;
 
 /// A partially resolved type with mapping components.
