@@ -28,6 +28,16 @@ pub enum VectorPart {
     None,
 }
 
+impl VectorPart {
+    /// Get the vector size.
+    pub fn size(self) -> Option<u32> {
+        match self {
+            Self::Some { size } => Some(size),
+            Self::None => None,
+        }
+    }
+}
+
 /// An option component to a type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum OptionPart {

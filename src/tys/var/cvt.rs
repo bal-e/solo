@@ -79,6 +79,28 @@ impl AsMut<Partial<ScalarType>> for StreamType {
 
 // --- VectorType --- //
 
+impl VectorType {
+    /// Construct a [`StreamType`] by adding a mapping part.
+    pub fn with_part(self, part: Partial<StreamPart>) -> StreamType {
+        StreamType {
+            stream: part,
+            vector: self.vector,
+            option: self.option,
+            scalar: self.scalar,
+        }
+    }
+}
+
+impl From<(OptionType, Partial<VectorPart>)> for VectorType {
+    fn from(value: (OptionType, Partial<VectorPart>)) -> Self {
+        Self {
+            vector: value.1,
+            option: value.0.option,
+            scalar: value.0.scalar,
+        }
+    }
+}
+
 impl From<VectorType> for OptionType {
     fn from(value: VectorType) -> Self {
         Self {
@@ -132,6 +154,17 @@ impl AsMut<Partial<ScalarType>> for VectorType {
 
 // --- OptionType --- //
 
+impl OptionType {
+    /// Construct a [`VectorType`] by adding a mapping part.
+    pub fn with_part(self, part: Partial<VectorPart>) -> VectorType {
+        VectorType {
+            vector: part,
+            option: self.option,
+            scalar: self.scalar,
+        }
+    }
+}
+
 impl From<OptionType> for Partial<ScalarType> {
     fn from(value: OptionType) -> Self {
         value.scalar
@@ -159,5 +192,17 @@ impl AsMut<Partial<OptionPart>> for OptionType {
 impl AsMut<Partial<ScalarType>> for OptionType {
     fn as_mut(&mut self) -> &mut Partial<ScalarType> {
         &mut self.scalar
+    }
+}
+
+// --- ScalarType --- //
+
+impl Partial<ScalarType> {
+    /// Construct an [`OptionType`] by adding a mapping part.
+    pub fn with_part(self, part: Partial<OptionPart>) -> OptionType {
+        OptionType {
+            option: part,
+            scalar: self,
+        }
     }
 }

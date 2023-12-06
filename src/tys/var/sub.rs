@@ -1,42 +1,72 @@
-use super::{super::{Subtyping, BoundResult, BoundError}, *};
+use super::{super::*, *};
 
-impl<T: Subtyping> Subtyping for Partial<T> {
+impl Subtyping for OptionType {
+    fn unify_min(lhs: Self, rhs: Self) -> BoundResult<Self> {
+        Subtyping::unify_min(lhs.scalar, rhs.scalar)
+            .zip(Subtyping::unify_min(lhs.option, rhs.option))
+            .map(|(scalar, option)| Self { scalar, option })
+    }
+
+    fn unify_max(lhs: Self, rhs: Self) -> BoundResult<Self> {
+        Subtyping::unify_max(lhs.scalar, rhs.scalar)
+            .zip(Subtyping::unify_max(lhs.option, rhs.option))
+            .map(|(scalar, option)| Self { scalar, option })
+    }
+
+    fn infer(self, sup: Self) -> BoundResult<Self> {
+        Subtyping::infer(self.scalar, sup.scalar)
+            .zip(Subtyping::infer(self.option, sup.option))
+            .map(|(scalar, option)| Self { scalar, option })
+    }
+}
+
+impl SubtypingStop for OptionType {
+    fn unify_min(lhs: Self, rhs: Self) -> BoundResult<Option<Self>> {
+        Subtyping::unify_min(lhs, rhs).map(Some)
+    }
+
+    fn unify_max(lhs: Self, rhs: Self) -> BoundResult<Option<Self>> {
+        Subtyping::unify_max(lhs, rhs).map(Some)
+    }
+
+    fn infer(self, sup: Self) -> BoundResult<Option<Self>> {
+        Subtyping::infer(self, sup).map(Some)
+    }
+}
+
+impl Subtyping for ScalarType {
     fn unify_min(lhs: Self, rhs: Self) -> BoundResult<Self> {
         match (lhs, rhs) {
-            (Self::Min, _) | (_, Self::Min) =>
-                BoundResult { error: None, value: Self::Min },
-            (Self::Max, x) | (x, Self::Max) =>
-                BoundResult { error: None, value: x },
-            (Self::Any, x) | (x, Self::Any) =>
-                BoundResult { error: None, value: x },
-            (Self::Val(l), Self::Val(r)) =>
-                Subtyping::unify_min(l, r).map(Self::Val),
+            (Self::Int(l), Self::Int(r)) =>
+                Subtyping::unify_min(l, r).map(Self::Int),
         }
     }
 
     fn unify_max(lhs: Self, rhs: Self) -> BoundResult<Self> {
         match (lhs, rhs) {
-            (Self::Min, x) | (x, Self::Min) =>
-                BoundResult { error: None, value: x },
-            (Self::Max, _) | (_, Self::Max) =>
-                BoundResult { error: None, value: Self::Max },
-            (Self::Any, x) | (x, Self::Any) =>
-                BoundResult { error: None, value: x },
-            (Self::Val(l), Self::Val(r)) =>
-                Subtyping::unify_max(l, r).map(Self::Val),
+            (Self::Int(l), Self::Int(r)) =>
+                Subtyping::unify_max(l, r).map(Self::Int),
         }
     }
 
     fn infer(self, sup: Self) -> BoundResult<Self> {
         match (self, sup) {
-            (x@Self::Min, _) | (x, Self::Max) =>
-                BoundResult { error: None, value: x },
-            (Self::Max, x) | (_, x@Self::Min) =>
-                BoundResult { error: Some(BoundError), value: x },
-            (Self::Any, x) | (x, Self::Any) =>
-                BoundResult { error: None, value: x },
-            (Self::Val(l), Self::Val(r)) =>
-                Subtyping::infer(l, r).map(Self::Val),
+            (Self::Int(l), Self::Int(r)) =>
+                Subtyping::infer(l, r).map(Self::Int),
         }
+    }
+}
+
+impl SubtypingStop for ScalarType {
+    fn unify_min(lhs: Self, rhs: Self) -> BoundResult<Option<Self>> {
+        Subtyping::unify_min(lhs, rhs).map(Some)
+    }
+
+    fn unify_max(lhs: Self, rhs: Self) -> BoundResult<Option<Self>> {
+        Subtyping::unify_max(lhs, rhs).map(Some)
+    }
+
+    fn infer(self, sup: Self) -> BoundResult<Option<Self>> {
+        Subtyping::infer(self, sup).map(Some)
     }
 }

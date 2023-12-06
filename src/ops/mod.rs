@@ -3,9 +3,10 @@
 mod fmt;
 mod prec;
 mod syn;
+mod tys;
 
 /// A binary operation.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BinOp {
     /// Stream expansion.
     Exp,
@@ -33,14 +34,14 @@ pub enum BinOp {
 }
 
 /// A unary operation.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UnaOp {
     /// An integer unary operation.
     Int(IntUnaOp),
 }
 
 /// An integer binary operation.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IntBinOp {
     /// Addition.
     Add,
@@ -74,7 +75,7 @@ pub enum IntBinOp {
 }
 
 /// A binary comparison operation.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CmpBinOp {
     /// Test that inputs are equal.
     IsEq,
@@ -96,7 +97,7 @@ pub enum CmpBinOp {
 }
 
 /// An integer unary operation.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IntUnaOp {
     /// Negation.
     Neg,
