@@ -1,109 +1,24 @@
 //! Type-checking for Solo.
 
-use core::iter;
-use core::num::NonZeroU32;
-use core::ops::Deref;
-
 use thiserror::Error;
 use unionfind::VecUnionFindByRank;
 
-use crate::ast::{self, ops::*, Stored};
-use crate::types as ext;
+use crate::soa::ID;
 
-pub mod logic;
-use self::logic::*;
-
-pub mod types;
-use self::types::*;
-
-/// Type-checking information for a function.
-pub struct Function<'ast> {
-    /// The AST definition of the function.
-    ast: &'ast ast::Function,
-
-    /// The type of every expression in the function.
-    types: Vec<ext::StreamType>,
-}
-
-impl<'ast> Function<'ast> {
-    /// Get the type of an expression in the function.
-    pub fn get_expr_type(&self, expr: &Stored<ast::Expr>) -> ext::StreamType {
-        self.types
-            .get((expr.ident - self.ast.expr_ids.start) as usize)
-            .cloned()
-            .unwrap()
-    }
-}
-
-/// Type-check a function.
-pub fn tck_fn(r#fn: &ast::Function) -> Result<Function<'_>, Error> {
-    // Setup the type-checker.
-    let num_exprs = r#fn.expr_ids.len();
-    let mut storage = Storage {
-        ast: r#fn,
-        types: iter::repeat(None).take(num_exprs).collect(),
-        tvars: VecUnionFindByRank::new(0 .. num_exprs).unwrap(),
-    };
-
-    // Resolve all function arguments.
-    for arg in &r#fn.args {
-        let ident: usize = arg.variable.expr.ident.try_into().unwrap();
-        storage.types[ident] = Some(arg.r#type.clone().into());
-    }
-
-    // Resolve the function body.
-    let rett = storage.tck_expr(&r#fn.body, ScalarType::Any)?;
-    if !rett.is_subtype_of(&r#fn.rett.clone().into()) {
-        return Err(logic::Error::Subtype.into());
-    }
-
-    // Resolve every expression in the body.
-    let types = (0 .. num_exprs)
-        .map(|i| (i, storage.tvars.find_shorten(&i).unwrap()))
-        .map(|(i, j)| {
-            let src = storage.types[j];
-            let dst = storage.types[i].as_mut();
-            dst.zip(src).map(|(dst, src)| {
-                dst.data.data.data = src.data.data.data;
-                *dst
-            })
-        })
-        .map(|t| t
-             .map(ext::StreamType::try_from)
-             .unwrap_or(Err(Error::Unresolvable)))
-        .collect::<Result<Vec<_>, Error>>()?;
-
-    println!("Types:");
-    let max_digits = (storage.types.len() - 1)
-        .checked_ilog10().unwrap_or(0) as usize + 1;
-    for (i, r#type) in storage.types.iter().enumerate() {
-        let class = storage.tvars.find(&i).unwrap();
-
-        print!("- {:max_digits$}: ", i);
-        match r#type {
-            Some(r#type) => print!("{}", r#type),
-            None => print!("unknown"),
-        };
-        println!(" -> {}", class);
-    }
-
-    Ok(Function { ast: r#fn, types })
-}
+use crate::ast;
+use crate::ops::tys::*;
+use crate::tys::{*, var::*};
 
 /// Storage for type-checking.
 pub struct Storage<'ast> {
-    /// The AST of the function being type-checked.
-    ast: &'ast ast::Function,
+    /// Storage for the AST.
+    ast: &'ast ast::Storage,
 
     /// The type of every expression in the AST.
     ///
-    /// If an expression is unresolved, [`None`] is stored; if the scalar part
-    /// of the expression is unresolved, then the union-find should be used to
-    /// resolve it.
-    ///
     /// The indices here correspond to the IDs of the stored expressions whose
     /// types are being inferred.
-    types: Vec<Option<StreamType>>,
+    types: Vec<MappedType>,
 
     /// A union-find structure for equating scalar types.
     ///
@@ -113,14 +28,34 @@ pub struct Storage<'ast> {
 }
 
 impl<'ast> Storage<'ast> {
+    /// Type-check a function.
+    pub fn tck_function(
+        &mut self,
+        function: ast::Function,
+    ) -> Result<(), Error> {
+        for arg in self.ast.arguments.get_seq(function.args) {
+            let variable = self.ast.variables.get(arg.variable);
+            let ident = usize::from(variable.expr);
+            self.types[ident] = arg.r#type.into();
+        }
+
+        let rett = self.tck_expr(function.body, Partial::Max)?;
+        if rett != function.rett.into() {
+            return Err(Error::Logic(BoundError));
+        }
+
+        Ok(())
+    }
+
     /// Type-check a statement.
     fn tck_stmt(
         &mut self,
-        stmt: &'ast Stored<ast::Stmt>,
+        stmt: ast::Stmt,
     ) -> Result<(), Error> {
-        match &**stmt {
+        match stmt {
             ast::Stmt::Let(variable) => {
-                self.tck_expr(&variable.expr, ScalarType::Any)?;
+                let variable = self.ast.variables.get(variable);
+                self.tck_expr(variable.expr, Partial::Max)?;
             },
         }
 
@@ -134,456 +69,159 @@ impl<'ast> Storage<'ast> {
     /// not be fully resolved.
     fn tck_expr(
         &mut self,
-        expr: &'ast Stored<ast::Expr>,
-        sup: ScalarType,
-    ) -> Result<StreamType, Error> {
-        let (r#type, eqto) = match **expr {
-            ast::Expr::Una(uop, ref src) => {
-                let sup = Self::tck_stream_uop_src(uop, sup)?;
-                let src_type = self.tck_expr(&src, sup)?;
-                self.tck_stream_uop(uop, (&src, src_type))?
+        expr_id: ID<ast::Expr>,
+        sup: Partial<ScalarType>,
+    ) -> Result<MappedType, Error> {
+        let expr = self.ast.exprs.get(expr_id);
+        let (r#type, eqto) = match *expr {
+            ast::Expr::Una(uop, [src_id]) => {
+                let sup = uop.src_type(sup).ok()?;
+                let src = self.tck_expr(src_id, sup)?;
+
+                let dst_id = usize::from(expr_id);
+                if matches!(uop.merges(), UnaMerges::SD) {
+                    let src_id = usize::from(src_id);
+                    self.tvars.union_by_rank(&src_id, &dst_id).unwrap();
+                }
+
+                let eqto = match uop.merges() {
+                    UnaMerges::Nil => None,
+                    UnaMerges::SD => Some(src_id),
+                };
+
+                (uop.dst_type(src).ok()?, eqto)
             },
 
-            ast::Expr::Bin(bop, [ref lhs, ref rhs]) => {
-                let sup = Self::tck_stream_bop_src(bop, sup)?;
-                let lhs_type = self.tck_expr(&lhs, sup[0])?;
-                let rhs_type = self.tck_expr(&rhs, sup[1])?;
-                self.tck_stream_bop(bop, (&lhs, lhs_type), (&rhs, rhs_type))?
+            ast::Expr::Bin(bop, [lhs_id, rhs_id]) => {
+                let sup = bop.src_type(sup).ok()?;
+                let lhs = self.tck_expr(lhs_id, sup[0])?;
+                let rhs = self.tck_expr(rhs_id, sup[1])?;
+
+                let dst_id = usize::from(expr_id);
+                if matches!(bop.merges(), BinMerges::LR | BinMerges::LRD) {
+                    self.unify_exprs_min(lhs_id, rhs_id)?;
+                }
+                if matches!(bop.merges(), BinMerges::LD | BinMerges::LRD) {
+                    let lhs_id = usize::from(lhs_id);
+                    self.tvars.union_by_rank(&lhs_id, &dst_id).unwrap();
+                }
+                if matches!(bop.merges(), BinMerges::RD | BinMerges::LRD) {
+                    let rhs_id = usize::from(rhs_id);
+                    self.tvars.union_by_rank(&rhs_id, &dst_id).unwrap();
+                }
+
+                let eqto = match bop.merges() {
+                    BinMerges::Nil => None,
+                    BinMerges::LD => Some(lhs_id),
+                    BinMerges::RD => Some(rhs_id),
+                    BinMerges::LR => None,
+                    BinMerges::LRD => Some(lhs_id),
+                };
+
+                (bop.dst_type([lhs, rhs]).ok()?, eqto)
             },
 
-            ast::Expr::Par(ref x) => (self.tck_expr(&x, sup)?, Some(&**x)),
+            ast::Expr::Par(src) => (self.tck_expr(src, sup)?, Some(src)),
 
-            ast::Expr::Cast(ref t, ref x) => {
-                // Resolve the sub-expression.
-                let x = self.tck_expr(&x, ScalarType::Any)?;
-                let t = StreamType::from(t.clone());
+            ast::Expr::Cast(dt, src) => {
+                let mut st = self.tck_expr(src, Partial::Max)?;
+                let mut dt: MappedType = dt.into();
 
                 // Ensure that the output type fits the supertype.
-                if !t.data.data.data.is_subtype_of(&sup) {
-                    return Err(logic::Error::Subtype.into());
+                dt.scalar = Subtyping::infer(dt.scalar, sup).ok()?;
+
+                if st.stream == Partial::Val(StreamPart::None)
+                        && dt.stream == Partial::Val(StreamPart::Some {}) {
+                    return Err(Error::Logic(BoundError));
                 }
 
-                // A non-stream object cannot be casted into a stream.
-                if x.part.is_none() && t.part.is_some() {
-                    return Err(logic::Error::Subtype.into());
-                }
+                // Disallow the use of options.
+                let none = Partial::Val(OptionPart::None);
+                st.option = Subtyping::infer(st.option, none).ok()?;
+                dt.option = Subtyping::infer(dt.option, none).ok()?;
 
-                // Disallow options when bit-casting.
-                if x.part.is_some() && t.part.is_none() {
-                    if x.data.data.part.is_some() {
-                        return Err(logic::Error::Subtype.into());
-                    }
-
-                    if t.data.data.part.is_some() {
-                        return Err(logic::Error::Subtype.into());
-                    }
-                }
-
-                (t, None)
+                (dt, None)
             },
 
             ast::Expr::Int(_) => {
-                // Ensure that an integer is allowed here.
-                if !ScalarType::Int(None).is_subtype_of(&sup) {
-                    return Err(logic::Error::Subtype.into());
-                }
-
-                (StreamType {
-                    part: None,
-                    data: VectorType {
-                        part: None,
-                        data: OptionType {
-                            part: None,
-                            data: ScalarType::Int(None),
-                        },
-                    },
-                }, None)
+                let res = Partial::Val(ScalarType::Int(Partial::Any));
+                (Subtyping::infer(res, sup).ok()?
+                    .with_part(Partial::Val(OptionPart::None))
+                    .with_part(Partial::Val(VectorPart::None))
+                    .with_part(Partial::Val(StreamPart::None)),
+                    None)
             },
 
-            ast::Expr::Var(ref v) =>
-                (self.infer_expr(&v.expr, sup)?, Some(v.expr.deref())),
+            ast::Expr::Var(variable) => {
+                let variable = self.ast.variables.get(variable);
+                (self.infer_expr(variable.expr, sup)?, Some(variable.expr))
+            },
 
             // 'Arg' is only possible within function argument definitions,
             // which are never visited by this function.
             ast::Expr::Arg => unreachable!(),
 
-            ast::Expr::Blk { ref stmts, ref rexpr } => {
-                for stmt in stmts {
-                    self.tck_stmt(&stmt)?;
+            ast::Expr::Blk { stmts, rexpr } => {
+                for stmt in self.ast.stmts.get_seq(stmts) {
+                    self.tck_stmt(stmt.clone())?;
                 }
 
-                (self.tck_expr(&rexpr, sup)?, Some(rexpr.deref()))
+                (self.tck_expr(rexpr, sup)?, Some(rexpr))
             },
         };
 
-        let id = usize::try_from(expr.ident).unwrap();
-        self.types[id] = Some(r#type);
+        let expr_id = usize::from(expr_id);
+        self.types[expr_id] = r#type;
         if let Some(eqto) = eqto {
-            let expr_id = id;
-            let eqto_id = usize::try_from(eqto.ident).unwrap();
+            let eqto_id = usize::from(eqto);
             self.tvars.union_by_rank(&expr_id, &eqto_id).unwrap();
         }
 
         Ok(r#type)
     }
 
-    /// Type-check a binary operation on streams.
-    fn tck_stream_bop(
-        &mut self,
-        bop: StreamBinOp,
-        lhs: (&'ast Stored<ast::Expr>, StreamType),
-        rhs: (&'ast Stored<ast::Expr>, StreamType),
-    ) -> Result<(StreamType, Option<&'ast Stored<ast::Expr>>), Error> {
-        Ok(match bop {
-            StreamBinOp::Map(bop) => {
-                let part = Subtyping::merge_min(lhs.1.part, rhs.1.part)?;
-                let (data, eqto) = self.tck_vector_bop(bop,
-                        (lhs.0, lhs.1.data), (rhs.0, rhs.1.data))?;
-                (StreamType { part, data }, eqto)
-            },
-
-            StreamBinOp::Exp => {
-                if rhs.1.part.is_none() {
-                    return Err(logic::Error::Subtype.into());
-                }
-
-                if rhs.1.data.data.part.is_some() {
-                    return Err(logic::Error::Subtype.into());
-                }
-
-                (StreamType {
-                    part: rhs.1.part,
-                    data: VectorType {
-                        part: Subtyping::merge_min(lhs.1.data.part, rhs.1.data.part)?,
-                        data: lhs.1.data.data,
-                    },
-                }, Some(lhs.0))
-            },
-
-            StreamBinOp::Red => {
-                if lhs.1.part.is_none() || rhs.1.part.is_none() {
-                    return Err(logic::Error::Subtype.into());
-                }
-
-                if rhs.1.data.data.part.is_some() {
-                    return Err(logic::Error::Subtype.into());
-                }
-
-                (StreamType {
-                    part: Some(StreamPart {}),
-                    data: VectorType {
-                        part: Subtyping::merge_min(lhs.1.data.part, rhs.1.data.part)?,
-                        data: lhs.1.data.data,
-                    },
-                }, Some(lhs.0))
-            },
-        })
-    }
-
-    /// Infer the source types for a binary operation on streams.
-    fn tck_stream_bop_src(
-        bop: StreamBinOp,
-        sup: ScalarType,
-    ) -> Result<[ScalarType; 2], Error> {
-        Ok(match bop {
-            StreamBinOp::Map(bop) =>
-                Self::tck_vector_bop_src(bop, sup)?,
-            StreamBinOp::Exp =>
-                [sup, ScalarType::Int(None)],
-            StreamBinOp::Red =>
-                [sup, ScalarType::Int(None)],
-        })
-    }
-
-    /// Type-check a unary operation on streams.
-    fn tck_stream_uop(
-        &mut self,
-        uop: StreamUnaOp,
-        src: (&'ast Stored<ast::Expr>, StreamType),
-    ) -> Result<(StreamType, Option<&'ast Stored<ast::Expr>>), Error> {
-        Ok(match uop {
-            StreamUnaOp::Map(uop) => {
-                let part = src.1.part;
-                let (data, eqto) = self
-                    .tck_vector_uop(uop, (src.0, src.1.data))?;
-                (StreamType { part, data }, eqto)
-            },
-        })
-    }
-
-    /// Infer the source type for a unary operation on streams.
-    fn tck_stream_uop_src(
-        uop: StreamUnaOp,
-        sup: ScalarType,
-    ) -> Result<ScalarType, Error> {
-        Ok(match uop {
-            StreamUnaOp::Map(uop) => Self::tck_vector_uop_src(uop, sup)?,
-        })
-    }
-
-    /// Type-check a binary operation on vectors.
-    fn tck_vector_bop(
-        &mut self,
-        bop: VectorBinOp,
-        lhs: (&'ast Stored<ast::Expr>, VectorType),
-        rhs: (&'ast Stored<ast::Expr>, VectorType),
-    ) -> Result<(VectorType, Option<&'ast Stored<ast::Expr>>), Error> {
-        Ok(match bop {
-            VectorBinOp::Map(bop) => {
-                let part = Subtyping::merge_min(lhs.1.part, rhs.1.part)?;
-                let (data, eqto) = self.tck_option_bop(bop,
-                        (lhs.0, lhs.1.data), (rhs.0, rhs.1.data))?;
-                (VectorType { part, data }, eqto)
-            },
-
-            VectorBinOp::Cat => {
-                let size =
-                    lhs.1.part.map_or(1, |p| p.size) +
-                    rhs.1.part.map_or(1, |p| p.size);
-                let part = Some(VectorPart { size });
-                let (data, eqto) = self.merge_expr_options(
-                    (lhs.0, lhs.1.data), (rhs.0, rhs.1.data))?;
-                (VectorType { part, data }, Some(eqto))
-            },
-
-            VectorBinOp::Ind => (VectorType {
-                part: rhs.1.part,
-                data: OptionType {
-                    part: Subtyping::merge_min(lhs.1.data.part, rhs.1.data.part)?,
-                    data: lhs.1.data.data,
-                },
-            }, Some(lhs.0)),
-        })
-    }
-
-    /// Infer the source types for a binary operation on vectors.
-    fn tck_vector_bop_src(
-        bop: VectorBinOp,
-        sup: ScalarType,
-    ) -> Result<[ScalarType; 2], Error> {
-        Ok(match bop {
-            VectorBinOp::Map(bop) =>
-                Self::tck_option_bop_src(bop, sup)?,
-            VectorBinOp::Cat =>
-                [sup; 2],
-            VectorBinOp::Ind =>
-                [sup, ScalarType::Int(None)],
-        })
-    }
-
-    /// Type-check a unary operation on vectors.
-    fn tck_vector_uop(
-        &mut self,
-        uop: VectorUnaOp,
-        src: (&'ast Stored<ast::Expr>, VectorType),
-    ) -> Result<(VectorType, Option<&'ast Stored<ast::Expr>>), Error> {
-        Ok(match uop {
-            VectorUnaOp::Map(uop) => {
-                let part = src.1.part;
-                let (data, eqto) = self
-                    .tck_option_uop(uop, (src.0, src.1.data))?;
-                (VectorType { part, data }, eqto)
-            },
-        })
-    }
-
-    /// Infer the source type for a unary operation on vectors.
-    fn tck_vector_uop_src(
-        uop: VectorUnaOp,
-        sup: ScalarType,
-    ) -> Result<ScalarType, Error> {
-        Ok(match uop {
-            VectorUnaOp::Map(uop) => Self::tck_option_uop_src(uop, sup)?,
-        })
-    }
-
-    /// Type-check a binary operation on options.
-    fn tck_option_bop(
-        &mut self,
-        bop: OptionBinOp,
-        lhs: (&'ast Stored<ast::Expr>, OptionType),
-        rhs: (&'ast Stored<ast::Expr>, OptionType),
-    ) -> Result<(OptionType, Option<&'ast Stored<ast::Expr>>), Error> {
-        Ok(match bop {
-            OptionBinOp::Map(bop) => {
-                let part = Subtyping::merge_min(lhs.1.part, rhs.1.part)?;
-                let (data, eqto) = self.tck_scalar_bop(bop,
-                        (lhs.0, lhs.1.data), (rhs.0, rhs.1.data))?;
-                (OptionType { part, data }, eqto)
-            }
-
-            OptionBinOp::Cond => {
-                if lhs.1.part.is_some() {
-                    return Err(logic::Error::Subtype.into());
-                }
-
-                (OptionType {
-                    part: Some(OptionPart {}),
-                    data: rhs.1.data,
-                }, Some(rhs.0))
-            },
-
-            OptionBinOp::Else => {
-                let part = None;
-                let (data, eqto) = self.merge_expr_scalars(
-                    (lhs.0, lhs.1.data), (rhs.0, rhs.1.data))?;
-                (OptionType { part, data }, Some(eqto))
-            },
-        })
-    }
-
-    /// Infer the source types for a binary operation on options.
-    fn tck_option_bop_src(
-        bop: OptionBinOp,
-        sup: ScalarType,
-    ) -> Result<[ScalarType; 2], Error> {
-        Ok(match bop {
-            OptionBinOp::Map(bop) =>
-                Self::tck_scalar_bop_src(bop, sup)?,
-            OptionBinOp::Cond =>
-                [ScalarType::Int(None), sup],
-            OptionBinOp::Else =>
-                [sup; 2],
-        })
-    }
-
-    /// Type-check a unary operation on options.
-    fn tck_option_uop(
-        &mut self,
-        uop: OptionUnaOp,
-        src: (&'ast Stored<ast::Expr>, OptionType),
-    ) -> Result<(OptionType, Option<&'ast Stored<ast::Expr>>), Error> {
-        Ok(match uop {
-            OptionUnaOp::Map(uop) => {
-                let part = src.1.part;
-                let (data, eqto) = self
-                    .tck_scalar_uop(uop, (src.0, src.1.data))?;
-                (OptionType { part, data }, eqto)
-            },
-        })
-    }
-
-    /// Infer the source type for a unary operation on options.
-    fn tck_option_uop_src(
-        uop: OptionUnaOp,
-        sup: ScalarType,
-    ) -> Result<ScalarType, Error> {
-        Ok(match uop {
-            OptionUnaOp::Map(uop) => Self::tck_scalar_uop_src(uop, sup)?,
-        })
-    }
-
-    /// Type-check a binary operation on scalars.
-    fn tck_scalar_bop(
-        &mut self,
-        bop: ScalarBinOp,
-        lhs: (&'ast Stored<ast::Expr>, ScalarType),
-        rhs: (&'ast Stored<ast::Expr>, ScalarType),
-    ) -> Result<(ScalarType, Option<&'ast Stored<ast::Expr>>), Error> {
-        Ok(match bop {
-            ScalarBinOp::Int(_) => {
-                let (data, eqto) = self.merge_expr_scalars(lhs, rhs)?;
-                (data, Some(eqto))
-            },
-
-            ScalarBinOp::Cmp(_) => {
-                self.merge_expr_scalars(lhs, rhs)?;
-                (ScalarType::Int(Some(IntType {
-                    sign: IntSign::U,
-                    size: NonZeroU32::new(1).unwrap(),
-                })), None)
-            },
-        })
-    }
-
-    /// Infer the source types for a binary operation on scalars.
-    fn tck_scalar_bop_src(
-        bop: ScalarBinOp,
-        sup: ScalarType,
-    ) -> Result<[ScalarType; 2], Error> {
-        Ok(match bop {
-            ScalarBinOp::Int(_) =>
-                [Subtyping::merge_min(ScalarType::Int(None), sup)?; 2],
-            ScalarBinOp::Cmp(_) =>
-                [sup; 2],
-        })
-    }
-
-    /// Type-check a unary operation on scalars.
-    fn tck_scalar_uop(
-        &mut self,
-        uop: ScalarUnaOp,
-        src: (&'ast Stored<ast::Expr>, ScalarType),
-    ) -> Result<(ScalarType, Option<&'ast Stored<ast::Expr>>), Error> {
-        Ok(match uop {
-            ScalarUnaOp::Int(_) => (src.1, Some(src.0)),
-        })
-    }
-
-    /// Infer the source type for a unary operation on scalars.
-    fn tck_scalar_uop_src(
-        uop: ScalarUnaOp,
-        sup: ScalarType,
-    ) -> Result<ScalarType, Error> {
-        Ok(match uop {
-            ScalarUnaOp::Int(_) =>
-                Subtyping::merge_min(ScalarType::Int(None), sup)?,
-        })
-    }
-
-    /// Merge the option types of the given expressions.
-    fn merge_expr_options(
-        &mut self,
-        lhs: (&'ast Stored<ast::Expr>, OptionType),
-        rhs: (&'ast Stored<ast::Expr>, OptionType),
-    ) -> Result<(OptionType, &'ast Stored<ast::Expr>), Error> {
-        let part = Subtyping::merge_min(lhs.1.part, rhs.1.part)?;
-        let (data, eqto) = self.merge_expr_scalars(
-            (lhs.0, lhs.1.data), (rhs.0, rhs.1.data))?;
-        Ok((OptionType { part, data }, eqto))
-    }
-
     /// Merge the scalar types of the given expressions.
-    fn merge_expr_scalars(
+    fn unify_exprs_min(
         &mut self,
-        lhs: (&'ast Stored<ast::Expr>, ScalarType),
-        rhs: (&'ast Stored<ast::Expr>, ScalarType),
-    ) -> Result<(ScalarType, &'ast Stored<ast::Expr>), Error> {
-        // Combine the types of the expressions.
-        let res = Subtyping::merge_min(lhs.1, rhs.1)?;
+        lhs_id: ID<ast::Expr>,
+        rhs_id: ID<ast::Expr>,
+    ) -> Result<Partial<ScalarType>, Error> {
+        // Resolve both nodes.
+        let lhs_id = self.tvars.find_shorten(&lhs_id.into()).unwrap();
+        let rhs_id = self.tvars.find_shorten(&rhs_id.into()).unwrap();
 
-        // Resolve both nodes all the way in.
-        let [l, r] = [lhs.0, rhs.0]
-            .map(|x| x.ident - self.ast.expr_ids.start)
-            .map(|x| usize::try_from(x).unwrap());
-        let l = self.tvars.find_shorten(&l).unwrap();
-        let r = self.tvars.find_shorten(&r).unwrap();
+        // Load and combine the nodes.
+        let lhs = self.types[usize::from(lhs_id)];
+        let rhs = self.types[usize::from(rhs_id)];
+
+        // Combine the types of the expressions.
+        let res = Subtyping::unify_min(lhs.scalar, rhs.scalar).ok()?;
 
         // Update the union-find to combine the two.
-        self.tvars.union_by_rank(&l, &r).unwrap();
+        self.tvars.union_by_rank(&lhs_id, &rhs_id).unwrap();
 
-        // Update the types to use the merged result.
-        self.types[l].as_mut().unwrap().data.data.data = res;
-        self.types[r].as_mut().unwrap().data.data.data = res;
+        // Update the nodes to use the merged result.
+        self.types[lhs_id].scalar = res;
+        self.types[rhs_id].scalar = res;
 
-        Ok((res, lhs.0))
+        Ok(res)
     }
 
     /// Infer the type of an expression from a supertype.
     fn infer_expr(
         &mut self,
-        expr: &Stored<ast::Expr>,
-        sup: ScalarType,
-    ) -> Result<StreamType, Error> {
-        let sid = usize::try_from(expr.ident).unwrap();
+        expr: ID<ast::Expr>,
+        sup: Partial<ScalarType>,
+    ) -> Result<MappedType, Error> {
+        let sid = usize::from(expr);
         let did = self.tvars.find_shorten(&sid).unwrap();
 
-        let det = self.types[did].as_mut().unwrap();
-        let res = det.data.data.data.infer_min(sup)?;
-        det.data.data.data = res;
+        let det = &mut self.types[did];
+        let res = Subtyping::infer(det.scalar, sup).ok()?;
+        det.scalar = res;
 
-        let set = self.types[sid].as_mut().unwrap();
-        set.data.data.data = res;
+        let set = &mut self.types[sid];
+        set.scalar = res;
 
         Ok(*set)
     }
@@ -592,8 +230,8 @@ impl<'ast> Storage<'ast> {
 /// A type-checking error.
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("A type logic error occurred: {0}")]
-    Logic(#[from] logic::Error),
+    #[error("A type logic error occurred")]
+    Logic(#[from] BoundError),
 
     #[error("An expression's type could not be resolved")]
     Unresolvable,

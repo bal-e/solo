@@ -152,6 +152,51 @@ impl BinOp {
     }
 }
 
+impl UnaOp {
+    /// Determine the merges involved in this type of operation.
+    pub fn merges(&self) -> UnaMerges {
+        match self {
+            Self::Int(_) => UnaMerges::SD,
+        }
+    }
+
+    /// Determine the destination type of this operation.
+    pub fn dst_type(
+        &self,
+        src: MappedType,
+    ) -> BoundResult<MappedType> {
+        let stream = |dst| dst;
+
+        let vector = |dst: BoundResult<VectorType>| {
+            (stream)(dst.map(|dst| dst.with_part(src.stream)))
+        };
+
+        let option = |dst: BoundResult<OptionType>| {
+            (vector)(dst.map(|dst| dst.with_part(src.vector)))
+        };
+
+        let scalar = |dst: BoundResult<Partial<ScalarType>>| {
+            (option)(dst.map(|dst| dst.with_part(src.option)))
+        };
+
+        match self {
+            Self::Int(_) => (scalar)(src.scalar.into()),
+        }
+    }
+
+    /// Infer the scalar parts of the source types of this operation.
+    pub fn src_type(
+        &self,
+        dst: Partial<ScalarType>,
+    ) -> BoundResult<Partial<ScalarType>> {
+        match self {
+            Self::Int(_) => {
+                Partial::Val(ScalarType::Int(Partial::Any)).infer(dst)
+            },
+        }
+    }
+}
+
 /// Information about the merges in a binary operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BinMerges {
@@ -169,4 +214,14 @@ pub enum BinMerges {
 
     /// Merge the left and right sides, and the destination.
     LRD,
+}
+
+/// Information about the merges in a unaryy operation.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum UnaMerges {
+    /// No merges need to be performed.
+    Nil,
+
+    /// Merge the source and the destination.
+    SD,
 }

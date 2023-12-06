@@ -3,7 +3,7 @@
 mod fmt;
 mod prec;
 mod syn;
-mod tys;
+pub mod tys;
 
 /// A binary operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

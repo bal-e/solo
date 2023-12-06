@@ -224,6 +224,11 @@ pub struct BoundResult<T> {
 }
 
 impl<T> BoundResult<T> {
+    /// Convert into a [`Result`].
+    pub fn ok(self) -> Result<T, BoundError> {
+        self.error.map_or(Ok(self.value), Err)
+    }
+
     /// Map over the underlying value.
     pub fn map<R, F>(self, f: F) -> BoundResult<R>
     where F: FnOnce(T) -> R {
