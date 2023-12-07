@@ -43,3 +43,14 @@ impl fmt::Display for IntSign {
         }
     }
 }
+
+impl<T: fmt::Display> fmt::Display for Partial<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Min => f.write_str("min"),
+            Self::Max => f.write_str("max"),
+            Self::Any => f.write_str("any"),
+            Self::Val(obj) => fmt::Display::fmt(&obj, f),
+        }
+    }
+}

@@ -28,21 +28,21 @@ impl BinOp {
 
         let vector = |dst: BoundResult<VectorType>| {
             (stream)(dst.and_then(|dst| {
-                Subtyping::unify_min(lhs.stream, rhs.stream)
+                Subtyping::unify_max(lhs.stream, rhs.stream)
                     .map(|stream| dst.with_part(stream))
             }))
         };
 
         let option = |dst: BoundResult<OptionType>| {
             (vector)(dst.and_then(|dst| {
-                Subtyping::unify_min(lhs.vector, rhs.vector)
+                Subtyping::unify_max(lhs.vector, rhs.vector)
                     .map(|vector| dst.with_part(vector))
             }))
         };
 
         let scalar = |dst: BoundResult<Partial<ScalarType>>| {
             (option)(dst.and_then(|dst| {
-                Subtyping::unify_min(lhs.option, rhs.option)
+                Subtyping::unify_max(lhs.option, rhs.option)
                     .map(|option| dst.with_part(option))
             }))
         };
@@ -56,7 +56,7 @@ impl BinOp {
                     rhs.stream = rhs_stream;
                     rhs.option = rhs_option;
 
-                    Subtyping::unify_min(lhs.vector, rhs.vector)
+                    Subtyping::unify_max(lhs.vector, rhs.vector)
                         .map(|vector| OptionType::from(lhs)
                              .with_part(vector)
                              .with_part(rhs.stream))
@@ -73,7 +73,7 @@ impl BinOp {
                     rhs.stream = rhs_stream;
                     rhs.option = rhs_option;
 
-                    Subtyping::unify_min(lhs.vector, rhs.vector)
+                    Subtyping::unify_max(lhs.vector, rhs.vector)
                         .map(|vector| OptionType::from(lhs)
                              .with_part(vector)
                              .with_part(rhs.stream))
@@ -144,8 +144,8 @@ impl BinOp {
             Self::Cond => [Partial::Val(ScalarType::Int(Partial::Max)), dst],
             Self::Else => [dst, dst],
             Self::Int(_) => {
-                let src = Partial::Val(ScalarType::Int(Partial::Any));
-                return src.infer(dst).map(|src| [src, src]);
+                let src = Partial::Val(ScalarType::Int(Partial::Max));
+                return dst.infer(src).map(|src| [src, src]);
             }
             Self::Cmp(_) => [dst, dst],
         }.into()

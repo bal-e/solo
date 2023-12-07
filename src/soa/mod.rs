@@ -18,6 +18,11 @@ impl<T> Storage<T> {
         Self { inner }
     }
 
+    /// The number of objects in this storage.
+    pub fn num(&self) -> usize {
+        self.inner.len()
+    }
+
     /// Access an object given its ID.
     pub fn get(&self, id: ID<T>) -> &T {
         &self.inner[<usize>::from(id)]
@@ -26,6 +31,13 @@ impl<T> Storage<T> {
     /// Access a sequence of objects given their ID.
     pub fn get_seq(&self, id: SeqID<T>) -> &[T] {
         &self.inner[<Range<usize>>::from(id)]
+    }
+}
+
+impl<T> From<StorageMut<T>> for Storage<T> {
+    fn from(value: StorageMut<T>) -> Self {
+        assert_eq!(0, value.stack.len());
+        Self { inner: value.inner.into_boxed_slice() }
     }
 }
 
@@ -43,6 +55,11 @@ impl<T> StorageMut<T> {
     /// Construct a new, empty [`StorageMut`].
     pub fn new(inner: Vec<T>) -> Self {
         Self { inner, stack: Vec::new() }
+    }
+
+    /// The number of objects in this storage.
+    pub fn num(&self) -> usize {
+        self.inner.len()
     }
 
     /// Access an object given its ID.

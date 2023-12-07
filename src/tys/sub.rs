@@ -52,54 +52,116 @@ impl<T: SubtypingStop> SubtypingStop for Option<T> {
     }
 }
 
+impl Subtyping for StreamPart {
+    fn unify_min(lhs: Self, rhs: Self) -> BoundResult<Self> {
+        match (lhs, rhs) {
+            (Self::None, _) | (_, Self::None) => Self::None,
+            (Self::Some {}, Self::Some {}) => Self::Some {},
+        }.into()
+    }
+
+    fn unify_max(lhs: Self, rhs: Self) -> BoundResult<Self> {
+        match (lhs, rhs) {
+            (Self::Some {}, _) | (_, Self::Some {}) => Self::Some {},
+            (Self::None, Self::None) => Self::None,
+        }.into()
+    }
+
+    fn infer(self, sup: Self) -> BoundResult<Self> {
+        match (self, sup) {
+            (Self::Some {}, Self::None) =>
+                BoundResult { error: Some(BoundError), value: self },
+            _ => BoundResult { error: None, value: self },
+        }
+    }
+}
+
 impl SubtypingStop for StreamPart {
     fn unify_min(lhs: Self, rhs: Self) -> BoundResult<Option<Self>> {
-        let value = (lhs == rhs).then_some(lhs);
-        BoundResult { error: value.is_none().then_some(BoundError), value }
+        Subtyping::unify_min(lhs, rhs).map(Some)
     }
 
     fn unify_max(lhs: Self, rhs: Self) -> BoundResult<Option<Self>> {
-        let value = (lhs == rhs).then_some(lhs);
-        BoundResult { error: value.is_none().then_some(BoundError), value }
+        Subtyping::unify_max(lhs, rhs).map(Some)
     }
 
     fn infer(self, sup: Self) -> BoundResult<Option<Self>> {
-        let value = (self == sup).then_some(self);
-        BoundResult { error: value.is_none().then_some(BoundError), value }
+        Subtyping::infer(self, sup).map(Some)
     }
 }
 
 impl SubtypingStop for VectorPart {
     fn unify_min(lhs: Self, rhs: Self) -> BoundResult<Option<Self>> {
-        let value = (lhs == rhs).then_some(lhs);
-        BoundResult { error: value.is_none().then_some(BoundError), value }
+        match (lhs, rhs) {
+            (Self::None, _) | (_, Self::None) => Some(Self::None),
+            (Self::Some { size: l }, Self::Some { size: r }) => if l == r {
+                Some(Self::Some { size: l })
+            } else {
+                return BoundResult { error: Some(BoundError), value: None };
+            },
+        }.into()
     }
 
     fn unify_max(lhs: Self, rhs: Self) -> BoundResult<Option<Self>> {
-        let value = (lhs == rhs).then_some(lhs);
-        BoundResult { error: value.is_none().then_some(BoundError), value }
+        match (lhs, rhs) {
+            (Self::Some { size: l }, Self::Some { size: r }) => if l == r {
+                Some(Self::Some { size: l })
+            } else {
+                return BoundResult { error: Some(BoundError), value: None };
+            },
+            (Self::None, x) | (x, Self::None) => Some(x),
+        }.into()
     }
 
     fn infer(self, sup: Self) -> BoundResult<Option<Self>> {
-        let value = (self == sup).then_some(self);
-        BoundResult { error: value.is_none().then_some(BoundError), value }
+        match (self, sup) {
+            (Self::Some { size: l }, Self::Some { size: r }) => if l == r {
+                BoundResult { error: None, value: Some(Self::Some { size: l }) }
+            } else {
+                BoundResult { error: Some(BoundError), value: None }
+            },
+            (Self::Some { .. }, Self::None) =>
+                BoundResult { error: Some(BoundError), value: Some(self) },
+            _ => BoundResult { error: None, value: Some(self) },
+        }
+    }
+}
+
+impl Subtyping for OptionPart {
+    fn unify_min(lhs: Self, rhs: Self) -> BoundResult<Self> {
+        match (lhs, rhs) {
+            (Self::None, _) | (_, Self::None) => Self::None,
+            (Self::Some {}, Self::Some {}) => Self::Some {},
+        }.into()
+    }
+
+    fn unify_max(lhs: Self, rhs: Self) -> BoundResult<Self> {
+        match (lhs, rhs) {
+            (Self::Some {}, _) | (_, Self::Some {}) => Self::Some {},
+            (Self::None, Self::None) => Self::None,
+        }.into()
+    }
+
+    fn infer(self, sup: Self) -> BoundResult<Self> {
+        match (self, sup) {
+            (Self::Some {}, Self::None) =>
+                BoundResult { error: Some(BoundError), value: self },
+            _ => BoundResult { error: None, value: self },
+        }
     }
 }
 
 impl SubtypingStop for OptionPart {
     fn unify_min(lhs: Self, rhs: Self) -> BoundResult<Option<Self>> {
-        let value = (lhs == rhs).then_some(lhs);
-        BoundResult { error: value.is_none().then_some(BoundError), value }
+        Subtyping::unify_min(lhs, rhs).map(Some)
     }
 
     fn unify_max(lhs: Self, rhs: Self) -> BoundResult<Option<Self>> {
-        let value = (lhs == rhs).then_some(lhs);
-        BoundResult { error: value.is_none().then_some(BoundError), value }
+        Subtyping::unify_max(lhs, rhs).map(Some)
     }
 
     fn infer(self, sup: Self) -> BoundResult<Option<Self>> {
-        let value = (self == sup).then_some(self);
-        BoundResult { error: value.is_none().then_some(BoundError), value }
+        Subtyping::infer(self, sup).map(Some)
     }
 }
 

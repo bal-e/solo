@@ -29,18 +29,7 @@ impl fmt::Display for OptionType {
 impl fmt::Display for ScalarType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Int(r#type) => fmt::Display::fmt(&r#type, f),
-        }
-    }
-}
-
-impl<T: fmt::Display> fmt::Display for Partial<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Min => f.write_str("min"),
-            Self::Max => f.write_str("max"),
-            Self::Any => f.write_str("any"),
-            Self::Val(obj) => fmt::Display::fmt(&obj, f),
+            Self::Int(r#type) => write!(f, "int {}", r#type),
         }
     }
 }

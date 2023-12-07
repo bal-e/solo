@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-use solo;
+use solo::*;
 
 /// A compiler for the Solo programming language.
 #[derive(Debug, Parser)]
@@ -54,7 +54,7 @@ fn cmd_compile<'a>(
     };
 
     // Parse the file into a grammatical representation.
-    let src = match solo::src::Grammar::parse(solo::src::Rule::r#mod, &input) {
+    let src = match src::Grammar::parse(src::Rule::r#mod, &input) {
         Ok(mut src) => src.next().unwrap(),
         Err(err) => {
             eprintln!("Error: could not compile '{}'", name);
@@ -64,34 +64,37 @@ fn cmd_compile<'a>(
     };
 
     // Parse the grammatical representation into an AST.
-    let source = solo::ast::ModuleSource::File(path.clone());
-    let r#mod = match solo::ast::parse_mod(src, name.to_string(), source) {
-        Ok(r#mod) => r#mod,
+    let mut parser = ast::parse::Parser::default();
+    let module = match ast::Module::parse(name.to_string(), src, &mut parser) {
+        Ok(module) => module,
         Err(err) => {
             eprintln!("Error: could not compile '{}'", name);
             eprintln!("Could not parse '{}': {}", path.display(), err);
             std::process::exit(1);
         },
     };
+    let module = parser.storage.modules.put(module);
+    let ast: ast::Storage = parser.storage.into();
+    let module = ast.modules.get(module);
 
+    // Format the AST and print it.
     let mut syntax = String::new();
-    solo::ast::format_module(&mut syntax, &r#mod).unwrap();
+    let mut writer = ast::syn::Writer::new(&ast, &mut syntax);
+    module.write_syntax(&mut writer).unwrap();
     println!("{}", syntax);
 
-    for ast in r#mod.functions {
-        // Type-check every function.
-        let tck = match solo::tck::tck_fn(&ast) {
-            Ok(tck) => tck,
-            Err(err) => {
-                eprintln!("Error: could not type-check '{}'", name);
-                eprintln!("'{}' contained an error: {}", ast.name, err);
-                std::process::exit(1);
-            },
+    // Type-check the module.
+    let mut tck = tck::Storage::new(&ast);
+    for function_id in module.functions.iter() {
+        let function = ast.functions.get(function_id);
+        if let Err(err) = tck.tck_function(function) {
+            eprintln!("Error: could not type-check '{}'", name);
+            eprintln!("'{}' contained an error: {}", function.name, err);
+            std::process::exit(1);
         };
 
-        // Convert the function to HIR.
-        let hir = solo::hir::parse_fn(&ast, &tck);
-
-        println!("Compiled HIR: {:#?}", hir);
+        let body_id = function.body.last().unwrap();
+        let body_ty = tck.get_expr_type(body_id);
+        println!("Function '{}': {}", function.name, body_ty);
     }
 }

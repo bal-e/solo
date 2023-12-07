@@ -37,6 +37,14 @@ macro_rules! def_storage {
                 }
             }
         )*
+
+        impl From<StorageMut> for Storage {
+            fn from(value: StorageMut) -> Self {
+                Self {
+                    $($field: value.$field.into(),)*
+                }
+            }
+        }
     };
 }
 

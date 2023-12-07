@@ -84,6 +84,36 @@ pub struct SeqID<T> {
     _data: PhantomData<fn(&[T]) -> &[T]>,
 }
 
+impl<T> SeqID<T> {
+    /// Whether the sequence is empty or not.
+    pub fn is_empty(&self) -> bool {
+        self.range.0 >= self.range.1
+    }
+
+    /// Get the first ID in this sequence, if any.
+    pub fn first(&self) -> Option<ID<T>> {
+        if self.range.0 < self.range.1 {
+            Some(ID::from(self.range.0))
+        } else {
+            None
+        }
+    }
+
+    /// Get the last ID in this sequence, if any.
+    pub fn last(&self) -> Option<ID<T>> {
+        if self.range.0 < self.range.1 {
+            Some(ID::from(self.range.1 - 1))
+        } else {
+            None
+        }
+    }
+
+    /// Iterate over the IDs in this sequence.
+    pub fn iter(self) -> impl Iterator<Item = ID<T>> {
+        (self.range.0 .. self.range.1).map(ID::from)
+    }
+}
+
 impl<T> Copy for SeqID<T> {}
 
 impl<T> Clone for SeqID<T> {

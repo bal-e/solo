@@ -3,7 +3,7 @@ use super::{super::*, *};
 impl Subtyping for OptionType {
     fn unify_min(lhs: Self, rhs: Self) -> BoundResult<Self> {
         Subtyping::unify_min(lhs.scalar, rhs.scalar)
-            .zip(Subtyping::unify_min(lhs.option, rhs.option))
+            .zip(Subtyping::unify_max(lhs.option, rhs.option))
             .map(|(scalar, option)| Self { scalar, option })
     }
 
