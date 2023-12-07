@@ -38,10 +38,14 @@ pub struct Function {
     /// The return type of the function.
     pub rett: MappedType,
 
-    /// The expressions in the function.
-    ///
-    /// The last expression is the function body.
-    pub body: SeqID<Expr>,
+    /// The function body.
+    pub body: ID<Expr>,
+
+    /// The ID of the first variable in the function.
+    pub variables_beg: ID<Variable>,
+
+    /// The ID of the first expression in the function.
+    pub exprs_beg: ID<Expr>,
 }
 
 /// An argument to a function.

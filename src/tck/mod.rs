@@ -8,6 +8,7 @@ use crate::soa::ID;
 use crate::ast;
 use crate::ops::tys::*;
 use crate::tys::{*, fix, var::*};
+use crate::soa::*;
 
 /// Storage for type-checking.
 pub struct Storage<'ast> {
@@ -64,15 +65,15 @@ impl<'ast> Storage<'ast> {
         }
 
         // Type-check the body (and verify it against the return type).
-        let body_id = function.body.last().unwrap();
         let body_sup = Partial::Val(function.rett.scalar.into());
-        let rett = self.tck_expr(body_id, body_sup)?;
+        let rett = self.tck_expr(function.body, body_sup)?;
         if rett != function.rett.into() {
             return Err(Error::Logic(BoundError));
         }
 
         // Ensure that all types are resolved.
-        for expr_id in function.body.iter() {
+        let exprs = u32::from(function.exprs_beg) .. u32::from(function.body) + 1;
+        for expr_id in <SeqID<ast::Expr>>::from(exprs).iter() {
             let sid = usize::from(expr_id);
             let did = self.tvars.find_shorten(&sid).unwrap();
 

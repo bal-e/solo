@@ -38,7 +38,7 @@ impl Function {
         w: &mut Writer<'_, W>,
     ) -> fmt::Result {
         let arguments = w.storage.arguments.get_seq(self.args);
-        let body = w.storage.exprs.get(self.body.last().unwrap());
+        let body = w.storage.exprs.get(self.body);
 
         write!(w, "fn {}(", self.name)?;
         for (i, argument) in arguments.iter().enumerate() {

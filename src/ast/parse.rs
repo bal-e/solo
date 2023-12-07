@@ -47,7 +47,10 @@ impl Function {
             let mut pairs = i.into_inner().peekable();
             assert_eq!(Rule::fn_kw, pairs.next().unwrap().as_rule());
             let name = pairs.next().unwrap().as_str().to_string();
-            let body_beg = p.storage.exprs.num();
+
+            let variables_beg = p.storage.variables.num().into();
+            let exprs_beg = p.storage.exprs.num().into();
+
             let args = ArgumentsMut::try_put_seq_rec(p, |p| {
                 pairs.next_if(|i| i.as_rule() == Rule::fn_arg)
                     .map(|i| Argument::parse(i, p))
@@ -55,11 +58,9 @@ impl Function {
             })?;
             let rett = MappedType::parse(pairs.next().unwrap(), p)?;
             let body = Expr::parse_blk(pairs.next().unwrap(), p)?;
-            let _ = p.storage.exprs.put(body);
-            let body_end = p.storage.exprs.num();
-            let body = (body_beg .. body_end).into();
+            let body = p.storage.exprs.put(body);
 
-            Ok(Function { name, args, rett, body })
+            Ok(Function { name, args, rett, body, variables_beg, exprs_beg })
         })
     }
 }

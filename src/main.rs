@@ -92,9 +92,13 @@ fn cmd_compile<'a>(
             eprintln!("'{}' contained an error: {}", function.name, err);
             std::process::exit(1);
         };
+    }
 
-        let body_id = function.body.last().unwrap();
-        let body_ty = tck.get_expr_type(body_id);
-        println!("Function '{}': {}", function.name, body_ty);
+    // Convert each function to HIR.
+    for function_id in module.functions.iter() {
+        let function = ast.functions.get(function_id);
+        let hir = hir::parse::Parser::parse(&ast, &tck, function);
+        println!("HIR for '{}':", function.name);
+        println!("{}", hir);
     }
 }
