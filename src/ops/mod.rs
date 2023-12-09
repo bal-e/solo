@@ -5,9 +5,12 @@ mod prec;
 mod syn;
 pub mod tys;
 
-/// A binary operation.
+/// A binary operation including mapping parts.
+pub type MappedBinOp = StreamBinOp;
+
+/// A streaming binary operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum BinOp {
+pub enum StreamBinOp {
     /// Stream expansion.
     Exp,
 
@@ -33,11 +36,50 @@ pub enum BinOp {
     Cmp(CmpBinOp),
 }
 
-/// A unary operation.
+/// A singular binary operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum UnaOp {
+pub enum SingleBinOp {
+    /// Vector concatenation.
+    Cat,
+
+    /// Vector indexing / permutation.
+    Ind,
+
+    /// Option conditioning.
+    Cond,
+
+    /// Option defaulting.
+    Else,
+
+    /// An integer binary operation.
+    Int(IntBinOp),
+
+    /// A binary comparison operation.
+    Cmp(CmpBinOp),
+}
+
+/// A unary operation including mapping parts.
+pub type MappedUnaOp = StreamUnaOp;
+
+/// A streaming unary operation.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StreamUnaOp {
     /// An integer unary operation.
     Int(IntUnaOp),
+}
+
+/// A singular unary operation.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SingleUnaOp {
+    /// An integer unary operation.
+    Int(IntUnaOp),
+}
+
+/// A singular collection operation.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SingleColOp {
+    /// Collect into an array.
+    Arr,
 }
 
 /// An integer binary operation.

@@ -2,7 +2,7 @@ use crate::prec::*;
 
 use super::*;
 
-impl BinOp {
+impl StreamBinOp {
     /// The precedence of this operation.
     pub fn prec(&self) -> Prec {
         match self {
@@ -16,7 +16,7 @@ impl BinOp {
     }
 }
 
-impl UnaOp {
+impl StreamUnaOp {
     /// The precedence of this operation.
     pub fn prec(&self) -> Prec {
         match self {

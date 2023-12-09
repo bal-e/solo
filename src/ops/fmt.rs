@@ -2,7 +2,7 @@ use core::fmt;
 
 use super::*;
 
-impl fmt::Display for BinOp {
+impl fmt::Display for StreamBinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Exp => "exp",
@@ -17,7 +17,28 @@ impl fmt::Display for BinOp {
     }
 }
 
-impl fmt::Display for UnaOp {
+impl fmt::Display for SingleBinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Cat => "cat",
+            Self::Ind => "ind",
+            Self::Cond => "cond",
+            Self::Else => "else",
+            Self::Int(o) => return fmt::Display::fmt(&o, f),
+            Self::Cmp(o) => return fmt::Display::fmt(&o, f),
+        })
+    }
+}
+
+impl fmt::Display for StreamUnaOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Int(o) => return fmt::Display::fmt(&o, f),
+        }
+    }
+}
+
+impl fmt::Display for SingleUnaOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Int(o) => return fmt::Display::fmt(&o, f),

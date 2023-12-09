@@ -2,7 +2,7 @@ use crate::tys::{Subtyping, BoundResult, var::*};
 
 use super::*;
 
-impl BinOp {
+impl MappedBinOp {
     /// Determine the merges involved in this type of operation.
     pub fn merges(&self) -> BinMerges {
         match self {
@@ -152,7 +152,7 @@ impl BinOp {
     }
 }
 
-impl UnaOp {
+impl MappedUnaOp {
     /// Determine the merges involved in this type of operation.
     pub fn merges(&self) -> UnaMerges {
         match self {

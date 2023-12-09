@@ -219,32 +219,32 @@ impl Expr {
             let rhs = p.storage.exprs.put(rhs);
 
             let bop = match next.into_inner().next().unwrap().as_rule() {
-                Rule::op_add => BinOp::Int(IntBinOp::Add),
-                Rule::op_sub => BinOp::Int(IntBinOp::Sub),
-                Rule::op_mul => BinOp::Int(IntBinOp::Mul),
-                Rule::op_div => BinOp::Int(IntBinOp::Div),
-                Rule::op_rem => BinOp::Int(IntBinOp::Rem),
+                Rule::op_add => MappedBinOp::Int(IntBinOp::Add),
+                Rule::op_sub => MappedBinOp::Int(IntBinOp::Sub),
+                Rule::op_mul => MappedBinOp::Int(IntBinOp::Mul),
+                Rule::op_div => MappedBinOp::Int(IntBinOp::Div),
+                Rule::op_rem => MappedBinOp::Int(IntBinOp::Rem),
 
-                Rule::op_and => BinOp::Int(IntBinOp::And),
-                Rule::op_ior => BinOp::Int(IntBinOp::IOr),
-                Rule::op_xor => BinOp::Int(IntBinOp::XOr),
-                Rule::op_shl => BinOp::Int(IntBinOp::ShL),
-                Rule::op_shr => BinOp::Int(IntBinOp::ShR),
+                Rule::op_and => MappedBinOp::Int(IntBinOp::And),
+                Rule::op_ior => MappedBinOp::Int(IntBinOp::IOr),
+                Rule::op_xor => MappedBinOp::Int(IntBinOp::XOr),
+                Rule::op_shl => MappedBinOp::Int(IntBinOp::ShL),
+                Rule::op_shr => MappedBinOp::Int(IntBinOp::ShR),
 
-                Rule::op_cat => BinOp::Cat,
-                Rule::op_ind => BinOp::Ind,
-                Rule::op_exp => BinOp::Exp,
-                Rule::op_red => BinOp::Red,
+                Rule::op_cat => MappedBinOp::Cat,
+                Rule::op_ind => MappedBinOp::Ind,
+                Rule::op_exp => MappedBinOp::Exp,
+                Rule::op_red => MappedBinOp::Red,
 
-                Rule::op_iseq => BinOp::Cmp(CmpBinOp::IsEq),
-                Rule::op_isne => BinOp::Cmp(CmpBinOp::IsNE),
-                Rule::op_islt => BinOp::Cmp(CmpBinOp::IsLT),
-                Rule::op_isle => BinOp::Cmp(CmpBinOp::IsLE),
-                Rule::op_isgt => BinOp::Cmp(CmpBinOp::IsGT),
-                Rule::op_isge => BinOp::Cmp(CmpBinOp::IsGE),
+                Rule::op_iseq => MappedBinOp::Cmp(CmpBinOp::IsEq),
+                Rule::op_isne => MappedBinOp::Cmp(CmpBinOp::IsNE),
+                Rule::op_islt => MappedBinOp::Cmp(CmpBinOp::IsLT),
+                Rule::op_isle => MappedBinOp::Cmp(CmpBinOp::IsLE),
+                Rule::op_isgt => MappedBinOp::Cmp(CmpBinOp::IsGT),
+                Rule::op_isge => MappedBinOp::Cmp(CmpBinOp::IsGE),
 
-                Rule::op_cond => BinOp::Cond,
-                Rule::op_else => BinOp::Else,
+                Rule::op_cond => MappedBinOp::Cond,
+                Rule::op_else => MappedBinOp::Else,
 
                 _ => unreachable!(),
             };
@@ -314,8 +314,8 @@ impl Expr {
             let uop = uop.into_inner().next().unwrap();
 
             let uop = match uop.as_rule() {
-                Rule::op_neg => UnaOp::Int(IntUnaOp::Neg),
-                Rule::op_not => UnaOp::Int(IntUnaOp::Not),
+                Rule::op_neg => MappedUnaOp::Int(IntUnaOp::Neg),
+                Rule::op_not => MappedUnaOp::Int(IntUnaOp::Not),
                 _ => unreachable!(),
             };
 

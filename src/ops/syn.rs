@@ -1,6 +1,6 @@
 use super::*;
 
-impl BinOp {
+impl StreamBinOp {
     /// The syntax of this operation.
     pub fn syntax(&self) -> &'static str {
         match self {
@@ -16,7 +16,7 @@ impl BinOp {
     }
 }
 
-impl UnaOp {
+impl StreamUnaOp {
     /// The syntax of this operation.
     pub fn syntax(&self) -> &'static str {
         match self {

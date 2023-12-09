@@ -50,10 +50,10 @@ impl Language for TypedNode {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Node {
     /// A binary operation.
-    Bin(BinOp, [Id; 2]),
+    Bin(MappedBinOp, [Id; 2]),
 
     /// A unary operation.
-    Una(UnaOp, [Id; 1]),
+    Una(MappedUnaOp, [Id; 1]),
 
     /// A cast operation.
     Cast(MappedType, Id),
