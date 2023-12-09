@@ -94,7 +94,6 @@ impl<'ast> Storage<'ast> {
         &mut self,
         stmt_id: ID<ast::Stmt>,
     ) -> Result<(), Error> {
-        println!("tck_stmt({:?})", stmt_id);
         let stmt = self.ast.stmts.get(stmt_id);
         match stmt {
             ast::Stmt::Let(variable) => {
@@ -116,11 +115,9 @@ impl<'ast> Storage<'ast> {
         expr_id: ID<ast::Expr>,
         sup: Partial<ScalarType>,
     ) -> Result<MappedType, Error> {
-        println!("beg tck_expr({:?}, {})", expr_id, sup);
         let expr = self.ast.exprs.get(expr_id);
         let (r#type, eqto) = match *expr {
             ast::Expr::Una(uop, [src_id]) => {
-                println!("- una {} of {:?}", uop, src_id);
                 let sup = uop.src_type(sup).ok()?;
                 let src = self.tck_expr(src_id, sup)?;
 
@@ -133,13 +130,11 @@ impl<'ast> Storage<'ast> {
             },
 
             ast::Expr::Bin(bop, [lhs_id, rhs_id]) => {
-                println!("- bin {} of {:?}, {:?}", bop, lhs_id, rhs_id);
                 let sup = bop.src_type(sup).ok()?;
                 let lhs = self.tck_expr(lhs_id, sup[0])?;
                 let rhs = self.tck_expr(rhs_id, sup[1])?;
 
                 if matches!(bop.merges(), BinMerges::LR | BinMerges::LRD) {
-                    println!("- merging lr");
                     self.unify_exprs_min(lhs_id, rhs_id)?;
                 }
 
@@ -203,8 +198,6 @@ impl<'ast> Storage<'ast> {
             },
         };
 
-        println!("end tck_expr({:?}) -> {}", expr_id, r#type);
-
         let expr_id = usize::from(expr_id);
         self.types[expr_id] = r#type;
         if let Some(eqto) = eqto {
@@ -221,8 +214,6 @@ impl<'ast> Storage<'ast> {
         lhs_id: ID<ast::Expr>,
         rhs_id: ID<ast::Expr>,
     ) -> Result<Partial<ScalarType>, Error> {
-        println!("unify_exprs_min({:?}, {:?})", lhs_id, rhs_id);
-
         // Resolve both nodes.
         let lhs_id = self.tvars.find_shorten(&lhs_id.into()).unwrap();
         let rhs_id = self.tvars.find_shorten(&rhs_id.into()).unwrap();
@@ -230,8 +221,6 @@ impl<'ast> Storage<'ast> {
         // Load and combine the nodes.
         let lhs = self.types[usize::from(lhs_id)];
         let rhs = self.types[usize::from(rhs_id)];
-
-        println!("- types {}, {}", lhs, rhs);
 
         // Combine the types of the expressions.
         let res = Subtyping::unify_min(lhs.scalar, rhs.scalar).ok()?;
