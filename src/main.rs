@@ -73,14 +73,15 @@ fn cmd_compile<'a>(
             std::process::exit(1);
         },
     };
-    let module = parser.storage.modules.put(module);
+    let module_id = parser.storage.modules.put(module);
     let ast: ast::Storage = parser.storage.into();
-    let module = ast.modules.get(module);
+    let module = ast.modules.get(module_id);
 
     // Format the AST and print it.
     let mut syntax = String::new();
     let mut writer = ast::syn::Writer::new(&ast, &mut syntax);
     module.write_syntax(&mut writer).unwrap();
+    println!("AST for '{}':", module.name);
     println!("{}", syntax);
 
     // Type-check the module.
