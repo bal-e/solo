@@ -50,8 +50,8 @@ macro_rules! def_storage {
 
 def_storage!(
     loops: Loop { Loops + LoopsMut },
-    streams: StreamInst { Streams + StreamsMut },
-    singles: SingleInst { Singles + SinglesMut },
+    streams: TypedStreamInst { Streams + StreamsMut },
+    singles: TypedSingleInst { Singles + SinglesMut },
 );
 
 /// Immutable storage for [`Loop`]s.
@@ -60,14 +60,14 @@ pub type Loops = soa::Storage<Loop>;
 /// Mutable storage for [`Loop`]s.
 pub type LoopsMut = soa::StorageMut<Loop>;
 
-/// Immutable storage for [`StreamInst`]s.
-pub type Streams = soa::Storage<StreamInst>;
+/// Immutable storage for [`TypedStreamInst`]s.
+pub type Streams = soa::Storage<TypedStreamInst>;
 
-/// Mutable storage for [`StreamInst`]s.
-pub type StreamsMut = soa::StorageMut<StreamInst>;
+/// Mutable storage for [`TypedStreamInst`]s.
+pub type StreamsMut = soa::StorageMut<TypedStreamInst>;
 
-/// Immutable storage for [`SingleInst`]s.
-pub type Singles = soa::Storage<SingleInst>;
+/// Immutable storage for [`TypedSingleInst`]s.
+pub type Singles = soa::Storage<TypedSingleInst>;
 
-/// Mutable storage for [`SingleInst`]s.
-pub type SinglesMut = soa::StorageMut<SingleInst>;
+/// Mutable storage for [`TypedSingleInst`]s.
+pub type SinglesMut = soa::StorageMut<TypedSingleInst>;

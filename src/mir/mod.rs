@@ -26,19 +26,19 @@ pub struct TypedStreamInst {
 #[derive(Clone, Debug)]
 pub enum StreamInst {
     /// A regular streaming binary operation.
-    Bin(StreamBinOp, [ID<Self>; 2]),
+    Bin(StreamBinOp, [ID<TypedStreamInst>; 2]),
 
     /// A regular streaming unary operation.
-    Una(StreamUnaOp, [ID<Self>; 1]),
+    Una(StreamUnaOp, [ID<TypedStreamInst>; 1]),
 
     /// Cast a value without changing its 'shape'.
-    MapCast(ID<Self>),
+    MapCast(ID<TypedStreamInst>),
 
     /// Cast a value by changing its 'shape'.
-    BitCast(ID<Self>),
+    BitCast(ID<TypedStreamInst>),
 
     /// Stream a singular value.
-    Map(ID<SingleInst>),
+    Map(ID<TypedSingleInst>),
 }
 
 /// A typed singular instruction.
@@ -52,19 +52,19 @@ pub struct TypedSingleInst {
 #[derive(Clone, Debug)]
 pub enum SingleInst {
     /// A regular singular binary operation.
-    Bin(SingleBinOp, [ID<Self>; 2]),
+    Bin(SingleBinOp, [ID<TypedSingleInst>; 2]),
 
     /// A regular singular unary operation.
-    Una(SingleUnaOp, [ID<Self>; 1]),
+    Una(SingleUnaOp, [ID<TypedSingleInst>; 1]),
 
     /// Cast a value without changing its 'shape'.
-    MapCast(ID<Self>),
+    MapCast(ID<TypedSingleInst>),
 
     /// Cast a value by changing its 'shape'.
-    BitCast(ID<Self>),
+    BitCast(ID<TypedSingleInst>),
 
     /// Collect a stream into a singular value.
-    Col(SingleColOp, ID<StreamInst>),
+    Col(SingleColOp, ID<TypedStreamInst>),
 
     /// A function argument.
     Arg(u32),
@@ -77,8 +77,8 @@ pub enum SingleInst {
 #[derive(Clone, Debug)]
 pub struct Loop {
     /// The streaming instructions in this loop.
-    pub streams: SeqID<StreamInst>,
+    pub streams: SeqID<TypedStreamInst>,
 
     /// The singular instructions following this loop.
-    pub singles: SeqID<SingleInst>,
+    pub singles: SeqID<TypedSingleInst>,
 }
