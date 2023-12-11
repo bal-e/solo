@@ -1,5 +1,6 @@
 //! Operations.
 
+mod cvt;
 mod fmt;
 mod prec;
 mod syn;

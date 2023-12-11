@@ -24,17 +24,7 @@ pub struct Function {
     pub name: String,
 
     /// The body of the function.
-    pub body: FunctionBody,
-}
-
-/// The body of a MIR function.
-#[derive(Copy, Clone, Debug)]
-pub enum FunctionBody {
-    /// A streaming function body.
-    Stream(ID<TypedStreamInst>),
-
-    /// A singular function body.
-    Single(ID<TypedSingleInst>),
+    pub body: ID<TypedSingleInst>,
 }
 
 /// A typed streaming instruction.
