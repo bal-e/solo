@@ -95,11 +95,16 @@ fn cmd_compile<'a>(
         };
     }
 
-    // Convert each function to HIR.
+    // Generate code for each function.
     for function_id in module.functions.iter() {
         let function = ast.functions.get(function_id);
-        let hir = hir::parse::Parser::parse(&ast, &tck, function);
+        let body = hir::parse::Parser::parse(&ast, &tck, function);
+        let hir_fn = hir::Function { name: function.name.clone(), body };
         println!("HIR for '{}':", function.name);
-        println!("{}", hir);
+        println!("{}", hir_fn.body);
+
+        let (_, mir) = mir::Function::parse(&hir_fn);
+        println!("MIR for '{}':", function.name);
+        println!("{:#?}", mir);
     }
 }

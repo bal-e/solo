@@ -13,6 +13,7 @@ impl Function {
             storage: StorageMut::default(),
             hir: &i.body,
             map: FxHashMap::default(),
+            loop_start: None,
         };
 
         let name = i.name.clone();
@@ -29,7 +30,7 @@ impl TypedStreamInst {
     pub fn parse<'hir>(
         i: hir::Id,
         p: &mut Parser<'hir>,
-    ) -> ID<Self> {
+    ) -> Self {
         // At this stage, it is not possible to chain streams - we have no
         // information about how many times any individual stream is used.
         // Instead, we collect every stream into an intermediary array.
@@ -41,51 +42,91 @@ impl TypedStreamInst {
         let dstt = p.hir[i].dstt;
         let src = TypedSingleInst::parse(i, p);
         let inst = StreamInst::Map(src);
-        p.storage.streams.put(Self { dstt, inst })
+        Self { dstt, inst }
     }
 }
 
 impl StreamInst {
     /// Parse the HIR of an expression.
     pub fn parse<'hir>(
-        i: &'hir hir::TypedNode,
+        i: hir::Id,
         p: &mut Parser<'hir>,
     ) -> Self {
-        match i.node {
+        let dstt = p.hir[i].dstt;
+        match p.hir[i].node {
             hir::Node::Bin(bop, [lhs, rhs]) => {
+                // Parse the referenced expressions.
                 let lhs = TypedStreamInst::parse(lhs, p);
                 let rhs = TypedStreamInst::parse(rhs, p);
+
+                // Mark the start of this loop.
+                p.beg_loop();
+
+                // Insert the references.
+                let lhs = p.storage.streams.put(lhs);
+                let rhs = p.storage.streams.put(rhs);
+
                 Self::Bin(bop, [lhs, rhs])
             },
 
             hir::Node::Una(uop, [src]) => {
+                // Parse the referenced expressions.
                 let src = TypedStreamInst::parse(src, p);
+
+                // Mark the start of this loop.
+                p.beg_loop();
+
+                // Insert the references.
+                let src = p.storage.streams.put(src);
+
                 Self::Una(uop, [src])
             },
 
             hir::Node::BitCast(cop, src) => {
+                // Parse the referenced expressions.
                 let src = TypedStreamInst::parse(src, p);
+
+                // Mark the start of this loop.
+                p.beg_loop();
+
+                // Insert the references.
+                let src = p.storage.streams.put(src);
+
                 Self::BitCast(cop, src)
             },
 
             hir::Node::MapCast(cop, src) => {
                 if cop == CastOp::Stream {
                     let src = TypedSingleInst::parse(src, p);
+
+                    // Mark the start of this loop.
+                    p.beg_loop();
+
                     Self::Map(src)
                 } else {
+                    // Parse the referenced expressions.
                     let src = TypedStreamInst::parse(src, p);
+
+                    // Mark the start of this loop.
+                    p.beg_loop();
+
+                    // Insert the references.
+                    let src = p.storage.streams.put(src);
+
                     Self::MapCast(cop, src)
                 }
             },
 
             // Stream arguments are singles that get mapped.
             hir::Node::Arg(num) => {
-                let src = TypedSingleInst {
-                    dstt: i.dstt,
-                    inst: SingleInst::Arg(num),
-                };
+                let inst = SingleInst::Arg(num);
+                let inst = TypedSingleInst { dstt, inst };
+                let src = p.storage.singles.put(inst);
 
-                Self::Map(p.storage.singles.put(src))
+                // Mark the start of this loop.
+                p.beg_loop();
+
+                Self::Map(src)
             },
 
             // Integer literals are not streams.
@@ -108,12 +149,8 @@ impl TypedSingleInst {
         let dstt = p.hir[i].dstt;
         let inst = match dstt.stream {
             StreamPart::Some {} => {
-                // Begin a new loop.
-                let stream_beg = p.storage.streams.num();
-                let single_beg = p.storage.singles.num();
-
                 // Parse the streaming instruction.
-                let inst = StreamInst::parse(&p.hir[i], p);
+                let inst = StreamInst::parse(i, p);
                 let inst = TypedStreamInst { dstt, inst };
                 let src = p.storage.streams.put(inst);
 
@@ -123,18 +160,13 @@ impl TypedSingleInst {
                 let inst = p.storage.singles.put(inst);
 
                 // Mark the completion of the loop.
-                let stream_end = p.storage.streams.num();
-                let single_end = p.storage.singles.num();
-
-                let streams = (stream_beg .. stream_end).into();
-                let singles = (single_beg .. single_end).into();
-                p.storage.loops.put(Loop { streams, singles });
+                let _ = p.end_loop().unwrap();
 
                 inst
             },
 
             StreamPart::None => {
-                let inst = SingleInst::parse(&p.hir[i], p);
+                let inst = SingleInst::parse(i, p);
                 p.storage.singles.put(Self { dstt, inst })
             },
         };
@@ -148,10 +180,10 @@ impl TypedSingleInst {
 impl SingleInst {
     /// Parse the HIR of an expression.
     pub fn parse<'hir>(
-        i: &'hir hir::TypedNode,
+        i: hir::Id,
         p: &mut Parser<'hir>,
     ) -> Self {
-        match i.node {
+        match p.hir[i].node {
             hir::Node::Bin(bop, [lhs, rhs]) => {
                 let lhs = TypedSingleInst::parse(lhs, p);
                 let rhs = TypedSingleInst::parse(rhs, p);
@@ -193,6 +225,32 @@ pub struct Parser<'hir> {
 
     /// A mapping from HIR nodes to MIR nodes.
     pub map: FxHashMap<hir::Id, ID<TypedSingleInst>>,
+
+    /// The start of a new loop, if any.
+    loop_start: Option<(usize, usize)>,
+}
+
+impl<'hir> Parser<'hir> {
+    /// Mark the start of a new loop.
+    pub fn beg_loop(&mut self) {
+        self.loop_start = Some((
+            self.storage.streams.num(),
+            self.storage.singles.num(),
+        ));
+    }
+
+    /// Finish a loop, if one was started.
+    pub fn end_loop(&mut self) -> Option<ID<Loop>> {
+        let (stream_beg, single_beg) = self.loop_start.take()?;
+
+        let stream_end = self.storage.streams.num();
+        let single_end = self.storage.singles.num();
+
+        let streams = (stream_beg .. stream_end).into();
+        let singles = (single_beg .. single_end).into();
+
+        Some(self.storage.loops.put(Loop { streams, singles }))
+    }
 }
 
 impl<'hir, T> AsMut<T> for Parser<'hir>
