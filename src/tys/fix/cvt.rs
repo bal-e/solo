@@ -2,6 +2,18 @@ use core::convert::{AsRef, AsMut};
 
 use super::*;
 
+// --- MappedType --- //
+
+impl From<MappedType> for MappedPart {
+    fn from(value: MappedType) -> Self {
+        Self {
+            stream: value.stream,
+            vector: value.vector,
+            option: value.option,
+        }
+    }
+}
+
 // --- StreamType --- //
 
 impl From<StreamType> for VectorType {

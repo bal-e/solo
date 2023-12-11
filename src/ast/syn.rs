@@ -124,7 +124,7 @@ impl Expr {
                 w.write_parens(|w| src.write_syntax(w))
             },
 
-            Expr::Cast(r#type, src) => {
+            Expr::BitCast(r#type, src) => {
                 let src = w.storage.exprs.get(src);
 
                 w.write_parens(|w| write!(w, "{}", r#type))?;

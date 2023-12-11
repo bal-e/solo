@@ -50,13 +50,16 @@ impl Language for TypedNode {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Node {
     /// A binary operation.
-    Bin(MappedBinOp, [Id; 2]),
+    Bin(BinOp, [Id; 2]),
 
     /// A unary operation.
-    Una(MappedUnaOp, [Id; 1]),
+    Una(UnaOp, [Id; 1]),
 
-    /// A cast operation.
-    Cast(MappedType, Id),
+    /// A bitwise cast operation.
+    BitCast(CastOp, Id),
+
+    /// A broadcast operation.
+    MapCast(CastOp, Id),
 
     /// A function argument.
     Arg(u32),
@@ -70,7 +73,8 @@ impl Language for Node {
         match (self, other) {
             (Self::Bin(l, _), Self::Bin(r, _)) => l == r,
             (Self::Una(l, _), Self::Una(r, _)) => l == r,
-            (Self::Cast(l, _), Self::Cast(r, _)) => l == r,
+            (Self::BitCast(l, _), Self::BitCast(r, _)) => l == r,
+            (Self::MapCast(l, _), Self::MapCast(r, _)) => l == r,
             (Self::Arg(l), Self::Arg(r)) => l == r,
             (Self::Int(l), Self::Int(r)) => l == r,
             _ => false,
@@ -81,7 +85,8 @@ impl Language for Node {
         match self {
             Self::Bin(_, x) => x,
             Self::Una(_, x) => x,
-            Self::Cast(_, x) => slice::from_ref(x),
+            Self::BitCast(_, x) => slice::from_ref(x),
+            Self::MapCast(_, x) => slice::from_ref(x),
             Self::Arg(_) | Self::Int(_) => &[],
         }
     }
@@ -90,7 +95,8 @@ impl Language for Node {
         match self {
             Self::Bin(_, x) => x,
             Self::Una(_, x) => x,
-            Self::Cast(_, x) => slice::from_mut(x),
+            Self::BitCast(_, x) => slice::from_mut(x),
+            Self::MapCast(_, x) => slice::from_mut(x),
             Self::Arg(_) | Self::Int(_) => &mut [],
         }
     }

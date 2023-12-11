@@ -2,7 +2,7 @@ use crate::tys::{Subtyping, BoundResult, var::*};
 
 use super::*;
 
-impl MappedBinOp {
+impl BinOp {
     /// Determine the merges involved in this type of operation.
     pub fn merges(&self) -> BinMerges {
         match self {
@@ -150,9 +150,63 @@ impl MappedBinOp {
             Self::Cmp(_) => [dst, dst],
         }.into()
     }
+
+    /// Infer the mapping parts of the source types of this operation.
+    pub fn src_map_part(&self, mut src: [MappedPart; 2]) -> [MappedPart; 2] {
+        // Infer stream parts.
+        if let Self::Exp | Self::Red = self {
+            let stream = StreamPart::Some {};
+            src.iter_mut().for_each(|x| x.stream = stream);
+        } else {
+            let stream = Subtyping::unify_max(src[0].stream, src[1].stream)
+                .ok().expect("Type-checking has already completed");
+            src.iter_mut().for_each(|x| x.stream = stream);
+        }
+
+        // Infer vector parts.
+        if let Self::Cat | Self::Ind = self {
+            // Both sides have independent 'vector' parts.
+        } else {
+            use crate::tys::SubtypingStop;
+
+            let vector = SubtypingStop::unify_max(src[0].vector, src[1].vector)
+                .ok().expect("Type-checking has already completed").unwrap();
+            src.iter_mut().for_each(|x| x.vector = vector);
+        }
+
+        // Infer option parts.
+        match self {
+            Self::Exp => {
+                // The output is optional anyways, so we always broadcast.
+                src[0].option = OptionPart::Some {};
+            },
+
+            Self::Red => {
+                // As a mask, the RHS never has an 'option' part.
+            },
+
+            Self::Cond => {
+                // The output has an 'option' part anyways, so we broadcast.
+                src[1].option = OptionPart::Some {};
+            },
+
+            Self::Else => {
+                // The LHS is always expected to have an 'option' part.
+                src[0].option = OptionPart::Some {};
+            },
+
+            _ => {
+                let option = Subtyping::unify_max(src[0].option, src[1].option)
+                    .ok().expect("Type-checking has already completed");
+                src.iter_mut().for_each(|x| x.option = option);
+            },
+        };
+
+        src
+    }
 }
 
-impl MappedUnaOp {
+impl UnaOp {
     /// Determine the merges involved in this type of operation.
     pub fn merges(&self) -> UnaMerges {
         match self {

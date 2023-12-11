@@ -46,6 +46,27 @@ impl fmt::Display for SingleUnaOp {
     }
 }
 
+impl fmt::Display for StreamCastOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Scalar => f.write_str("scalar"),
+            Self::Option => f.write_str("option"),
+            Self::Vector => f.write_str("vector"),
+            Self::Stream => f.write_str("stream"),
+        }
+    }
+}
+
+impl fmt::Display for SingleCastOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Scalar => f.write_str("scalar"),
+            Self::Option => f.write_str("option"),
+            Self::Vector => f.write_str("vector"),
+        }
+    }
+}
+
 impl fmt::Display for IntBinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {

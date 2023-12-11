@@ -2,11 +2,13 @@
 
 mod cvt;
 mod fmt;
-
 mod sub;
-pub use sub::*;
 
-pub use super::{Partial, StreamPart, VectorPart, OptionPart, IntType, IntSign};
+pub use super::{
+    Partial,
+    MappedPart, StreamPart, VectorPart, OptionPart,
+    IntType, IntSign,
+};
 
 /// A partially resolved type with mapping components.
 pub type MappedType = StreamType;

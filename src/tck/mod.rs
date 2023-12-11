@@ -151,7 +151,7 @@ impl<'ast> Storage<'ast> {
 
             ast::Expr::Par(src) => (self.tck_expr(src, sup)?, Some(src)),
 
-            ast::Expr::Cast(dt, src) => {
+            ast::Expr::BitCast(dt, src) => {
                 let mut st = self.tck_expr(src, Partial::Max)?;
                 let mut dt: MappedType = dt.into();
 

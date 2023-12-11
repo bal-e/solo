@@ -14,6 +14,14 @@ pub use sub::*;
 mod cvt;
 mod fmt;
 
+/// The mapping components of a type.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MappedPart {
+    pub stream: StreamPart,
+    pub vector: VectorPart,
+    pub option: OptionPart,
+}
+
 /// A stream component to type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StreamPart {

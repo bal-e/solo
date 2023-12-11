@@ -57,7 +57,7 @@ impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
         }
 
         // Parse the function body.
-        this.parse_expr(function.body);
+        this.parse_expr(function.body, Some(function.rett.into()));
 
         this.exprs
     }
@@ -68,7 +68,7 @@ impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
             ast::Stmt::Let(variable_id) => {
                 let variable = self.ast.variables.get(variable_id);
 
-                let id = self.parse_expr(variable.expr);
+                let id = self.parse_expr(variable.expr, None);
 
                 let var_beg = usize::from(self.function.variables_beg);
                 let var_cur = usize::from(variable_id);
@@ -79,28 +79,49 @@ impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
         }
     }
 
-    fn parse_expr(&mut self, node_id: ID<ast::Expr>) -> egg::Id {
+    fn parse_expr(
+        &mut self,
+        node_id: ID<ast::Expr>,
+        mapt: Option<MappedPart>,
+    ) -> egg::Id {
         let node = self.ast.exprs.get(node_id);
+        let dstt = self.tck.get_expr_type(node_id);
         let node = match *node {
             ast::Expr::Una(uop, [src]) => {
-                let src = self.parse_expr(src);
+                let src = self.parse_expr(src, None);
                 Node::Una(uop, [src])
             },
 
             ast::Expr::Bin(bop, [lhs, rhs]) => {
-                let lhs = self.parse_expr(lhs);
-                let rhs = self.parse_expr(rhs);
+                let lhs_type = self.tck.get_expr_type(lhs);
+                let rhs_type = self.tck.get_expr_type(rhs);
+                let map_parts = [lhs_type, rhs_type].map(From::from);
+                let map_parts = bop.src_map_part(map_parts);
+                let lhs = self.parse_expr(lhs, Some(map_parts[0]));
+                let rhs = self.parse_expr(rhs, Some(map_parts[1]));
                 Node::Bin(bop, [lhs, rhs])
             },
 
             ast::Expr::Par(src) => {
-                let src = self.parse_expr(src);
+                let src = self.parse_expr(src, None);
                 return src;
             },
 
-            ast::Expr::Cast(dstt, src) => {
-                let src = self.parse_expr(src);
-                Node::Cast(dstt, src)
+            ast::Expr::BitCast(dstt, src) => {
+                let src = self.parse_expr(src, None);
+                let cop = {
+                    if let StreamPart::Some { .. } = dstt.stream {
+                        CastOp::Stream
+                    } else if let VectorPart::Some { .. } = dstt.vector {
+                        CastOp::Vector
+                    } else if let OptionPart::Some { .. } = dstt.option {
+                        CastOp::Option
+                    } else {
+                        CastOp::Scalar
+                    }
+                };
+
+                Node::BitCast(cop, src)
             },
 
             ast::Expr::Int(ref val) => {
@@ -118,11 +139,32 @@ impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
 
             ast::Expr::Blk { stmts, rexpr } => {
                 stmts.iter().for_each(|s| self.parse_stmt(s));
-                return self.parse_expr(rexpr);
+                return self.parse_expr(rexpr, None);
             },
         };
 
-        let dstt = self.tck.get_expr_type(node_id);
-        self.exprs.add(TypedNode { node, dstt })
+        let mut dstt = dstt;
+        let mut result = self.exprs.add(TypedNode { node, dstt });
+        let mapt = mapt.unwrap_or(dstt.into());
+
+        if dstt.option != mapt.option {
+            let node = Node::MapCast(CastOp::Option, result);
+            dstt.option = mapt.option;
+            result = self.exprs.add(TypedNode { node, dstt });
+        }
+
+        if dstt.vector != mapt.vector {
+            let node = Node::MapCast(CastOp::Vector, result);
+            dstt.vector = mapt.vector;
+            result = self.exprs.add(TypedNode { node, dstt });
+        }
+
+        if dstt.stream != mapt.stream {
+            let node = Node::MapCast(CastOp::Stream, result);
+            dstt.stream = mapt.stream;
+            result = self.exprs.add(TypedNode { node, dstt });
+        }
+
+        result
     }
 }

@@ -79,16 +79,16 @@ pub enum Stmt {
 #[derive(Clone, Debug)]
 pub enum Expr {
     /// A binary expression.
-    Bin(MappedBinOp, [ID<Self>; 2]),
+    Bin(BinOp, [ID<Self>; 2]),
 
     /// A unary expression.
-    Una(MappedUnaOp, [ID<Self>; 1]),
+    Una(UnaOp, [ID<Self>; 1]),
 
     /// A parenthesized expression.
     Par(ID<Self>),
 
-    /// A cast expression.
-    Cast(MappedType, ID<Self>),
+    /// A bitwise cast expression.
+    BitCast(MappedType, ID<Self>),
 
     /// An integer literal.
     Int(BigInt),

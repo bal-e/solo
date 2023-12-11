@@ -3,7 +3,10 @@
 mod cvt;
 mod fmt;
 
-pub use super::{StreamPart, VectorPart, OptionPart, IntType, IntSign};
+pub use super::{
+    MappedPart, StreamPart, VectorPart, OptionPart,
+    IntType, IntSign,
+};
 
 /// A resolved type with mapping components.
 pub type MappedType = StreamType;

@@ -5,8 +5,8 @@ mod prec;
 mod syn;
 pub mod tys;
 
-/// A binary operation including mapping parts.
-pub type MappedBinOp = StreamBinOp;
+/// A binary operation.
+pub type BinOp = StreamBinOp;
 
 /// A streaming binary operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -58,8 +58,8 @@ pub enum SingleBinOp {
     Cmp(CmpBinOp),
 }
 
-/// A unary operation including mapping parts.
-pub type MappedUnaOp = StreamUnaOp;
+/// A unary operation.
+pub type UnaOp = StreamUnaOp;
 
 /// A streaming unary operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -80,6 +80,38 @@ pub enum SingleUnaOp {
 pub enum SingleColOp {
     /// Collect into an array.
     Arr,
+}
+
+/// A casting operation.
+pub type CastOp = StreamCastOp;
+
+/// A streaming casting operation.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StreamCastOp {
+    /// Only cast the scalar part.
+    Scalar,
+
+    /// Cast the option and scalar parts.
+    Option,
+
+    /// Cast the vector, option, and scalar parts.
+    Vector,
+
+    /// Cast the stream, vector, option, and scalar parts.
+    Stream,
+}
+
+/// A singular casting operation.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SingleCastOp {
+    /// Only cast the scalar part.
+    Scalar,
+
+    /// Cast the option and scalar parts.
+    Option,
+
+    /// Cast the vector, option, and scalar parts.
+    Vector,
 }
 
 /// An integer binary operation.

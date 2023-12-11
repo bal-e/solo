@@ -15,6 +15,26 @@ use crate::tys::fix::*;
 mod soa;
 pub use soa::*;
 
+/// An MIR function.
+#[derive(Clone, Debug)]
+pub struct Function {
+    /// The name of the function.
+    pub name: String,
+
+    /// The body of the function.
+    pub body: FunctionBody,
+}
+
+/// The body of a MIR function.
+#[derive(Copy, Clone, Debug)]
+pub enum FunctionBody {
+    /// A streaming function body.
+    Stream(ID<TypedStreamInst>),
+
+    /// A singular function body.
+    Single(ID<TypedSingleInst>),
+}
+
 /// A typed streaming instruction.
 #[derive(Clone, Debug)]
 pub struct TypedStreamInst {

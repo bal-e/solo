@@ -13,7 +13,8 @@ impl fmt::Display for Node {
         match self {
             Self::Bin(bop, _) => fmt::Display::fmt(&bop, f),
             Self::Una(uop, _) => fmt::Display::fmt(&uop, f),
-            Self::Cast(..) => f.write_str("cast"),
+            Self::BitCast(cop, _) => write!(f, "bitcast:{}", cop),
+            Self::MapCast(cop, _) => write!(f, "mapcast:{}", cop),
             Self::Arg(num) => write!(f, "arg:{}", num),
             Self::Int(val) => write!(f, "int:{}", val),
         }
