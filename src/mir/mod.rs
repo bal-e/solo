@@ -15,6 +15,8 @@ use crate::tys::fix::*;
 mod soa;
 pub use soa::*;
 
+pub mod parse;
+
 /// An MIR function.
 #[derive(Clone, Debug)]
 pub struct Function {
@@ -51,11 +53,11 @@ pub enum StreamInst {
     /// A regular streaming unary operation.
     Una(StreamUnaOp, [ID<TypedStreamInst>; 1]),
 
-    /// Cast a value without changing its 'shape'.
-    MapCast(ID<TypedStreamInst>),
-
     /// Cast a value by changing its 'shape'.
-    BitCast(ID<TypedStreamInst>),
+    BitCast(StreamCastOp, ID<TypedStreamInst>),
+
+    /// Cast a value without changing its 'shape'.
+    MapCast(StreamCastOp, ID<TypedStreamInst>),
 
     /// Stream a singular value.
     Map(ID<TypedSingleInst>),
@@ -77,11 +79,11 @@ pub enum SingleInst {
     /// A regular singular unary operation.
     Una(SingleUnaOp, [ID<TypedSingleInst>; 1]),
 
-    /// Cast a value without changing its 'shape'.
-    MapCast(ID<TypedSingleInst>),
-
     /// Cast a value by changing its 'shape'.
-    BitCast(ID<TypedSingleInst>),
+    BitCast(SingleCastOp, ID<TypedSingleInst>),
+
+    /// Cast a value without changing its 'shape'.
+    MapCast(SingleCastOp, ID<TypedSingleInst>),
 
     /// Collect a stream into a singular value.
     Col(SingleColOp, ID<TypedStreamInst>),

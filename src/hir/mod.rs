@@ -4,10 +4,12 @@ use core::slice;
 
 use num_bigint::BigInt;
 
-use egg::{self, Id, Language, RecExpr};
+use egg::{self, Language};
 
 use crate::ops::*;
 use crate::tys::fix::*;
+
+pub use egg::{Id, RecExpr};
 
 mod fmt;
 pub mod parse;
