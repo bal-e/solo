@@ -12,6 +12,8 @@ use crate::ops::*;
 use crate::soa::{ID, SeqID};
 use crate::tys::fix::*;
 
+mod fmt;
+
 mod soa;
 pub use soa::*;
 

@@ -46,6 +46,14 @@ impl fmt::Display for SingleUnaOp {
     }
 }
 
+impl fmt::Display for SingleColOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Arr => f.write_str("arr"),
+        }
+    }
+}
+
 impl fmt::Display for StreamCastOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

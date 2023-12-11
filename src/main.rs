@@ -100,11 +100,30 @@ fn cmd_compile<'a>(
         let function = ast.functions.get(function_id);
         let body = hir::parse::Parser::parse(&ast, &tck, function);
         let hir_fn = hir::Function { name: function.name.clone(), body };
+        println!();
         println!("HIR for '{}':", function.name);
         println!("{}", hir_fn.body);
 
         let (_, mir) = mir::Function::parse(&hir_fn);
+        println!();
         println!("MIR for '{}':", function.name);
-        println!("{:#?}", mir);
+
+        println!("Streams:");
+        let streams: &[_] = mir.streams.as_ref();
+        for (id, stream) in streams.iter().enumerate() {
+            println!("  {} | {}", id, stream);
+        }
+
+        println!("Singles:");
+        let singles: &[_] = mir.singles.as_ref();
+        for (id, single) in singles.iter().enumerate() {
+            println!("  {} | {}", id, single);
+        }
+
+        println!("Loops:");
+        let loops: &[_] = mir.loops.as_ref();
+        for (id, r#loop) in loops.iter().enumerate() {
+            println!("  {} | {}", id, r#loop);
+        }
     }
 }

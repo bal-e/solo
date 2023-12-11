@@ -1,6 +1,6 @@
 //! Storage.
 
-use core::convert::AsMut;
+use core::convert::{AsRef, AsMut};
 use core::ops::{ControlFlow, FromResidual, Try, Range, Residual};
 
 mod ids;
@@ -31,6 +31,12 @@ impl<T> Storage<T> {
     /// Access a sequence of objects given their ID.
     pub fn get_seq(&self, id: SeqID<T>) -> &[T] {
         &self.inner[<Range<usize>>::from(id)]
+    }
+}
+
+impl<T> AsRef<[T]> for Storage<T> {
+    fn as_ref(&self) -> &[T] {
+        &self.inner
     }
 }
 
