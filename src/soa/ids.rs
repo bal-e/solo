@@ -108,6 +108,11 @@ impl<T> SeqID<T> {
         }
     }
 
+    /// Get the length of this sequence.
+    pub fn len(&self) -> usize {
+        <Range<usize>>::from(*self).len()
+    }
+
     /// Iterate over the IDs in this sequence.
     pub fn iter(self) -> impl Iterator<Item = ID<T>> {
         (self.range.0 .. self.range.1).map(ID::from)

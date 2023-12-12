@@ -20,6 +20,9 @@ pub struct Function {
     /// The name of the function.
     pub name: String,
 
+    /// The function's argument types.
+    pub args: Vec<MappedType>,
+
     /// The body of the function.
     pub body: RecExpr<TypedNode>,
 }

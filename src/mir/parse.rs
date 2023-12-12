@@ -17,11 +17,12 @@ impl Function {
         };
 
         let name = i.name.clone();
+        let args = i.args.clone();
         let body: &[_] = i.body.as_ref();
         let last = (body.len() - 1).into();
         let body = TypedSingleInst::parse(last, &mut parser);
 
-        (Self { name, body }, parser.storage.into())
+        (Self { name, args, body }, parser.storage.into())
     }
 }
 

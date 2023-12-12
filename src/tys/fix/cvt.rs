@@ -91,6 +91,18 @@ impl AsMut<ScalarType> for StreamType {
 
 // --- VectorType --- //
 
+impl VectorType {
+    /// Construct a [`StreamType`] by adding a mapping part.
+    pub fn with_part(self, part: StreamPart) -> StreamType {
+        StreamType {
+            stream: part,
+            vector: self.vector,
+            option: self.option,
+            scalar: self.scalar,
+        }
+    }
+}
+
 impl From<VectorType> for OptionType {
     fn from(value: VectorType) -> Self {
         Self {
@@ -144,6 +156,17 @@ impl AsMut<ScalarType> for VectorType {
 
 // --- OptionType --- //
 
+impl OptionType {
+    /// Construct a [`VectorType`] by adding a mapping part.
+    pub fn with_part(self, part: VectorPart) -> VectorType {
+        VectorType {
+            vector: part,
+            option: self.option,
+            scalar: self.scalar,
+        }
+    }
+}
+
 impl From<OptionType> for ScalarType {
     fn from(value: OptionType) -> Self {
         value.scalar
@@ -171,5 +194,17 @@ impl AsMut<OptionPart> for OptionType {
 impl AsMut<ScalarType> for OptionType {
     fn as_mut(&mut self) -> &mut ScalarType {
         &mut self.scalar
+    }
+}
+
+// --- ScalarType --- //
+
+impl ScalarType {
+    /// Construct an [`OptionType`] by adding a mapping part.
+    pub fn with_part(self, part: OptionPart) -> OptionType {
+        OptionType {
+            option: part,
+            scalar: self,
+        }
     }
 }

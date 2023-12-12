@@ -8,8 +8,52 @@ use crate::soa::*;
 
 use super::*;
 
+impl Function {
+    /// Parse a function from the AST.
+    pub fn parse(
+        ast: &ast::Storage,
+        tck: &tck::Storage<'_>,
+        ast_fn: &ast::Function,
+    ) -> Self {
+        let mut parser = Parser {
+            ast,
+            tck,
+            ast_fn,
+            exprs: RecExpr::default(),
+            bindings: Vec::default(),
+        };
+
+        let mut args = Vec::with_capacity(ast_fn.args.len());
+
+        // Add the arguments to the set of bindings.
+        for argument_id in ast_fn.args.iter() {
+            let argument = ast.arguments.get(argument_id);
+
+            let node = Node::Arg(argument_id.into());
+            let dstt = argument.r#type;
+            args.push(dstt);
+            let id = parser.exprs.add(TypedNode { node, dstt });
+
+            let var_beg = usize::from(ast_fn.variables_beg);
+            let var_cur = usize::from(argument.variable);
+            let var_off = var_cur - var_beg;
+            assert_eq!(parser.bindings.len(), var_off);
+            parser.bindings.push(id);
+        }
+
+        // Parse the function body.
+        parser.parse_expr(ast_fn.body, Some(ast_fn.rett.into()));
+
+        Self {
+            name: ast_fn.name.clone(),
+            args,
+            body: parser.exprs,
+        }
+    }
+}
+
 /// A parser for type-checked Solo ASTs.
-pub struct Parser<'ast: 'tck, 'tck> {
+struct Parser<'ast: 'tck, 'tck> {
     /// Storage for the AST.
     ast: &'ast ast::Storage,
 
@@ -17,7 +61,7 @@ pub struct Parser<'ast: 'tck, 'tck> {
     tck: &'tck tck::Storage<'ast>,
 
     /// The function being converted to HIR.
-    function: &'ast ast::Function,
+    ast_fn: &'ast ast::Function,
 
     /// The expressions in the code.
     exprs: RecExpr<TypedNode>,
@@ -27,41 +71,6 @@ pub struct Parser<'ast: 'tck, 'tck> {
 }
 
 impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
-    /// Parse a function from a type-checked AST.
-    pub fn parse(
-        ast: &'ast ast::Storage,
-        tck: &'tck tck::Storage<'ast>,
-        function: &'ast ast::Function,
-    ) -> RecExpr<TypedNode> {
-        let mut this = Self {
-            ast,
-            tck,
-            function,
-            exprs: RecExpr::default(),
-            bindings: Vec::default(),
-        };
-
-        // Add the arguments to the set of bindings.
-        for argument_id in function.args.iter() {
-            let argument = ast.arguments.get(argument_id);
-
-            let node = Node::Arg(argument_id.into());
-            let dstt = argument.r#type;
-            let id = this.exprs.add(TypedNode { node, dstt });
-
-            let var_beg = usize::from(function.variables_beg);
-            let var_cur = usize::from(argument.variable);
-            let var_off = var_cur - var_beg;
-            assert_eq!(this.bindings.len(), var_off);
-            this.bindings.push(id);
-        }
-
-        // Parse the function body.
-        this.parse_expr(function.body, Some(function.rett.into()));
-
-        this.exprs
-    }
-
     fn parse_stmt(&mut self, node_id: ID<ast::Stmt>) {
         let node = self.ast.stmts.get(node_id);
         match *node {
@@ -70,7 +79,7 @@ impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
 
                 let id = self.parse_expr(variable.expr, None);
 
-                let var_beg = usize::from(self.function.variables_beg);
+                let var_beg = usize::from(self.ast_fn.variables_beg);
                 let var_cur = usize::from(variable_id);
                 let var_off = var_cur - var_beg;
                 assert_eq!(self.bindings.len(), var_off);
@@ -129,7 +138,7 @@ impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
             },
 
             ast::Expr::Var(variable_id) => {
-                let var_beg = usize::from(self.function.variables_beg);
+                let var_beg = usize::from(self.ast_fn.variables_beg);
                 let var_cur = usize::from(variable_id);
                 let var_off = var_cur - var_beg;
                 return self.bindings[var_off];

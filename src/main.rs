@@ -98,8 +98,7 @@ fn cmd_compile<'a>(
     // Generate code for each function.
     for function_id in module.functions.iter() {
         let function = ast.functions.get(function_id);
-        let body = hir::parse::Parser::parse(&ast, &tck, function);
-        let hir_fn = hir::Function { name: function.name.clone(), body };
+        let hir_fn = hir::Function::parse(&ast, &tck, function);
         println!();
         println!("HIR for '{}':", function.name);
         println!("{}", hir_fn.body);
