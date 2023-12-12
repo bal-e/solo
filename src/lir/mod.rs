@@ -6,8 +6,8 @@ use thiserror::Error;
 
 use inkwell;
 
+pub mod build;
 pub mod parse;
-pub mod val;
 
 pub struct Builder<'ctx> {
     ctx: &'ctx Context,
@@ -32,6 +32,11 @@ impl Context {
     pub fn new() -> Self {
         Self { inner: inkwell::context::Context::create() }
     }
+
+    /// Create a new [`Builder`].
+    pub fn create_builder(&self) -> Builder<'_> {
+        Builder { ctx: self, inner: self.inner.create_builder() }
+    }
 }
 
 impl Deref for Context {
@@ -44,7 +49,6 @@ impl Deref for Context {
 
 /// The LIR of a module.
 pub struct Module<'ctx> {
-    context: &'ctx inkwell::context::Context,
     inner: inkwell::module::Module<'ctx>,
 }
 
@@ -52,7 +56,6 @@ impl<'ctx> Module<'ctx> {
     /// Construct a new [`Module`] of the given name.
     pub fn new(ctx: &'ctx Context, name: &str) -> Self {
         Self {
-            context: &ctx.inner,
             inner: ctx.inner.create_module(name),
         }
     }

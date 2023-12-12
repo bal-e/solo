@@ -1,6 +1,8 @@
-//! LLVM IR values processed for the LIR.
+//! Building LIR values.
 
 use core::assert_matches::assert_matches;
+
+use num_bigint::{BigInt, Sign};
 
 use inkwell::{
     self,
@@ -18,8 +20,8 @@ use super::*;
 /// A built stream (array) value.
 #[derive(Copy, Clone, Debug)]
 pub struct StreamValue<'ctx> {
-    ty: StreamType,
-    id: BasicValueEnum<'ctx>,
+    pub ty: StreamType,
+    pub id: BasicValueEnum<'ctx>,
 }
 
 impl<'ctx> StreamValue<'ctx> {
@@ -54,13 +56,37 @@ impl<'ctx> StreamValue<'ctx> {
                 data,
         }
     }
+
+    /// Convert this to a vector value type.
+    pub fn into_vector(self) -> VectorValue<'ctx> {
+        assert_matches!(self.ty.stream, StreamPart::None);
+        VectorValue { ty: self.ty.into(), id: self.id }
+    }
+}
+
+impl<'ctx> From<VectorValue<'ctx>> for StreamValue<'ctx> {
+    fn from(value: VectorValue<'ctx>) -> Self {
+        Self { ty: value.ty.with_part(StreamPart::None), id: value.id }
+    }
+}
+
+impl<'ctx> TryFrom<StreamValue<'ctx>> for VectorValue<'ctx> {
+    type Error = ();
+
+    fn try_from(value: StreamValue<'ctx>) -> Result<Self, Self::Error> {
+        if let StreamPart::None = value.ty.stream {
+            Ok(Self { ty: value.ty.into(), id: value.id })
+        } else {
+            Err(())
+        }
+    }
 }
 
 /// A built optional value.
 #[derive(Copy, Clone, Debug)]
 pub struct VectorValue<'ctx> {
-    ty: VectorType,
-    id: BasicValueEnum<'ctx>,
+    pub ty: VectorType,
+    pub id: BasicValueEnum<'ctx>,
 }
 
 impl<'ctx> VectorValue<'ctx> {
@@ -254,22 +280,34 @@ impl<'ctx> VectorValue<'ctx> {
         iter: Option<VectorIter<'ctx>>,
     ) -> Result<Self, Error> {
         assert_eq!(ins.ty, self.ty.into());
-        let VectorPart::Some { .. } = self.ty.vector else {
-            unreachable!("Only use 'build_iter_put()' in folds!")
-        };
 
-        let ty = Self::llvm_ty(b.ctx, self.ty);
-        let index = iter.unwrap().index;
-        let tmp = b.build_alloca(ty, "")?;
-        b.build_store(tmp, self.id)?;
-        let ptr = unsafe {
-            let idx = &[b.ctx.i32_type().const_zero(), index];
-            b.build_in_bounds_gep(ty, tmp, idx, "")?
-        };
-        b.build_store(ptr, ins.id)?;
-        let val = b.build_load(ty, tmp, "")?;
+        if let VectorPart::Some { .. } = self.ty.vector {
+            let ty = Self::llvm_ty(b.ctx, self.ty);
+            let index = iter.unwrap().index;
+            let tmp = b.build_alloca(ty, "")?;
+            b.build_store(tmp, self.id)?;
+            let ptr = unsafe {
+                let idx = &[b.ctx.i32_type().const_zero(), index];
+                b.build_in_bounds_gep(ty, tmp, idx, "")?
+            };
+            b.build_store(ptr, ins.id)?;
+            let val = b.build_load(ty, tmp, "")?;
 
-        Ok(Self { ty: self.ty, id: val })
+            Ok(Self { ty: self.ty, id: val })
+        } else {
+            assert_matches!(iter, None);
+            Ok(Self { ty: self.ty, id: ins.id })
+        }
+    }
+
+    /// Broadcast a value into a [`VectorValue`].
+    pub fn build_new(
+        b: &Builder<'ctx>,
+        part: VectorPart,
+        src: OptionValue<'ctx>,
+    ) -> Result<Self, Error> {
+        let ty = src.ty.with_part(part);
+        Self::build_fold(b, ty, |_| Ok(src))
     }
 
     /// Build a poison value.
@@ -304,6 +342,24 @@ impl<'ctx> VectorValue<'ctx> {
     }
 }
 
+impl<'ctx> From<OptionValue<'ctx>> for VectorValue<'ctx> {
+    fn from(value: OptionValue<'ctx>) -> Self {
+        Self { ty: value.ty.with_part(VectorPart::None), id: value.id }
+    }
+}
+
+impl<'ctx> TryFrom<VectorValue<'ctx>> for OptionValue<'ctx> {
+    type Error = ();
+
+    fn try_from(value: VectorValue<'ctx>) -> Result<Self, Self::Error> {
+        if let VectorPart::None = value.ty.vector {
+            Ok(Self { ty: value.ty.into(), id: value.id })
+        } else {
+            Err(())
+        }
+    }
+}
+
 /// An iteration over vectors.
 #[derive(Copy, Clone, Debug)]
 pub struct VectorIter<'ctx> {
@@ -314,8 +370,8 @@ pub struct VectorIter<'ctx> {
 /// A built optional value.
 #[derive(Copy, Clone, Debug)]
 pub struct OptionValue<'ctx> {
-    ty: OptionType,
-    id: BasicValueEnum<'ctx>,
+    pub ty: OptionType,
+    pub id: BasicValueEnum<'ctx>,
 }
 
 impl<'ctx> OptionValue<'ctx> {
@@ -544,6 +600,24 @@ impl<'ctx> OptionValue<'ctx> {
     }
 }
 
+impl<'ctx> From<ScalarValue<'ctx>> for OptionValue<'ctx> {
+    fn from(value: ScalarValue<'ctx>) -> Self {
+        Self { ty: value.ty.with_part(OptionPart::None), id: value.id }
+    }
+}
+
+impl<'ctx> TryFrom<OptionValue<'ctx>> for ScalarValue<'ctx> {
+    type Error = ();
+
+    fn try_from(value: OptionValue<'ctx>) -> Result<Self, Self::Error> {
+        if let OptionPart::None = value.ty.option {
+            Ok(Self { ty: value.ty.into(), id: value.id })
+        } else {
+            Err(())
+        }
+    }
+}
+
 /// An iteration over optionals.
 #[derive(Copy, Clone, Debug)]
 pub struct OptionIter<'ctx> {
@@ -554,8 +628,8 @@ pub struct OptionIter<'ctx> {
 /// A built scalar value.
 #[derive(Copy, Clone, Debug)]
 pub struct ScalarValue<'ctx> {
-    ty: ScalarType,
-    id: BasicValueEnum<'ctx>,
+    pub ty: ScalarType,
+    pub id: BasicValueEnum<'ctx>,
 }
 
 impl<'ctx> ScalarValue<'ctx> {
@@ -649,8 +723,8 @@ impl<'ctx> From<IntValue<'ctx>> for ScalarValue<'ctx> {
 /// A built integer value.
 #[derive(Copy, Clone, Debug)]
 pub struct IntValue<'ctx> {
-    ty: IntType,
-    id: BasicValueEnum<'ctx>,
+    pub ty: IntType,
+    pub id: BasicValueEnum<'ctx>,
 }
 
 impl<'ctx> IntValue<'ctx> {
@@ -745,6 +819,22 @@ impl<'ctx> IntValue<'ctx> {
         }.into();
 
         Ok(Self { ty, id })
+    }
+
+    /// Build a constant arbitrary-precision signed integer.
+    pub fn build_const(
+        b: &Builder<'ctx>,
+        ty: IntType,
+        val: &BigInt,
+    ) -> Result<Self, Error> {
+        let bits = val.bits().try_into().unwrap();
+        let (sign, digits) = val.to_u64_digits();
+        let mut val = b.ctx.custom_width_int_type(bits)
+            .const_int_arbitrary_precision(&digits);
+        if sign == Sign::Minus { val = val.const_neg(); }
+        let int_ty = b.ctx.custom_width_int_type(ty.bits.get());
+        val = val.const_cast(int_ty, ty.sign == IntSign::S);
+        Ok(Self { ty, id: val.into() })
     }
 
     /// Build a poison value.

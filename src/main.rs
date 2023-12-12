@@ -95,6 +95,9 @@ fn cmd_compile<'a>(
         };
     }
 
+    let lir_ctx = lir::Context::new();
+    let lir_mod = lir::Module::new(&lir_ctx, &module.name);
+
     // Generate code for each function.
     for function_id in module.functions.iter() {
         let function = ast.functions.get(function_id);
@@ -103,7 +106,7 @@ fn cmd_compile<'a>(
         println!("HIR for '{}':", function.name);
         println!("{}", hir_fn.body);
 
-        let (_, mir) = mir::Function::parse(&hir_fn);
+        let (mir_fn, mir) = mir::Function::parse(&hir_fn);
         println!();
         println!("MIR for '{}':", function.name);
 
@@ -124,5 +127,12 @@ fn cmd_compile<'a>(
         for (id, r#loop) in loops.iter().enumerate() {
             println!("  {} | {}", id, r#loop);
         }
+
+        lir::Function::parse(&lir_ctx, &lir_mod, &mir, &mir_fn)
+            .expect("Building the LIR should not fail!");
     }
+
+    println!();
+    println!("LIR for '{}'", module.name);
+    println!("{}", lir_mod.as_text());
 }

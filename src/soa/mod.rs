@@ -32,6 +32,11 @@ impl<T> Storage<T> {
     pub fn get_seq(&self, id: SeqID<T>) -> &[T] {
         &self.inner[<Range<usize>>::from(id)]
     }
+
+    /// Iterate over the objects in this storage.
+    pub fn iter(&self) -> impl Iterator<Item = &T> + '_ {
+        self.inner.iter()
+    }
 }
 
 impl<T> AsRef<[T]> for Storage<T> {
