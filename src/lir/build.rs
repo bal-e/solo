@@ -104,22 +104,22 @@ impl<'ctx> VectorValue<'ctx> {
             unreachable!();
         };
 
-        let val = Self::build_undef(b, ty)?;
+        let val = Self::build_poison(b, ty)?;
 
         // Append LHS elements.
-        let [val] = Self::build_iter(b, lhs.ty.vector, [val.id], |iter, [val]| {
+        let val = Self::build_iter(b, lhs.ty.vector, val.id, |iter, val| {
             let ins = lhs.build_iter_get(b, iter)?;
 
             let val = Self { ty, id: val };
             let val = val.build_iter_put(b, ins, iter)?;
 
-            Ok([val.id])
+            Ok(val.id)
         })?;
 
         let off = b.ctx.i32_type().const_int(lhs_size.into(), false);
 
         // Append RHS elements.
-        let [val] = Self::build_iter(b, rhs.ty.vector, [val], |iter, [val]| {
+        let val = Self::build_iter(b, rhs.ty.vector, val, |iter, val| {
             let ins = rhs.build_iter_get(b, iter)?;
 
             // Adjust the iteration index for the destination type.
@@ -130,7 +130,7 @@ impl<'ctx> VectorValue<'ctx> {
             let val = Self { ty, id: val };
             let val = val.build_iter_put(b, ins, iter)?;
 
-            Ok([val.id])
+            Ok(val.id)
         })?;
 
         Ok(Self { ty, id: val })
@@ -172,27 +172,27 @@ impl<'ctx> VectorValue<'ctx> {
           ) -> Result<OptionValue<'ctx>, Error>
     {
         let val = Self::build_undef(b, ty)?;
-        let [val] = Self::build_iter(b, ty.vector, [val.id], |iter, [val]| {
+        let val = Self::build_iter(b, ty.vector, val.id, |iter, val| {
             let new = (f)(iter)?;
             let val = Self { ty, id: val };
             let val = val.build_iter_put(b, new, iter)?;
-            Ok([val.id])
+            Ok(val.id)
         })?;
 
         Ok(Self { ty, id: val })
     }
 
     /// Build a general iteration loop.
-    pub fn build_iter<F, const N: usize>(
+    pub fn build_iter<F>(
         b: &Builder<'ctx>,
         part: VectorPart,
-        val: [BasicValueEnum<'ctx>; N],
+        val: BasicValueEnum<'ctx>,
         f: F,
-    ) -> Result<[BasicValueEnum<'ctx>; N], Error>
+    ) -> Result<BasicValueEnum<'ctx>, Error>
     where F: FnOnce(
               Option<VectorIter<'ctx>>,
-              [BasicValueEnum<'ctx>; N],
-          ) -> Result<[BasicValueEnum<'ctx>; N], Error>
+              BasicValueEnum<'ctx>,
+          ) -> Result<BasicValueEnum<'ctx>, Error>
     {
         if let VectorPart::Some { size } = part {
             let curr = b.get_insert_block().unwrap();
@@ -211,15 +211,17 @@ impl<'ctx> VectorValue<'ctx> {
             b.position_at_end(test);
             let idx_phi = b.build_phi(idx_ty, "")?;
             let idx_old = idx_phi.as_basic_value().into_int_value();
-            let val_phi = val.try_map(|v| b.build_phi(v.get_type(), ""))?;
-            let val_old = val_phi.map(|v| v.as_basic_value());
+            let val_phi = b.build_phi(val.get_type(), "")?;
+            let val_old = val_phi.as_basic_value();
             let total = idx_ty.const_int(size.into(), false);
-            b.build_switch(idx_old, body, &[(total, post)])?;
+            let pred = inkwell::IntPredicate::ULT;
+            let cont = b.build_int_compare(pred, idx_old, total, "")?;
+            b.build_conditional_branch(cont, body, post)?;
 
             // Perform iteration and collect the values.
             b.position_at_end(body);
             let iter = VectorIter { index: idx_old };
-            let val_new = (f)(Some(iter), val)?;
+            let val_new = (f)(Some(iter), val_old)?;
             let idx_add = idx_ty.const_int(1, false);
             let idx_new = b.build_int_add(idx_old, idx_add, "")?;
             b.build_unconditional_branch(test)?;
@@ -232,12 +234,10 @@ impl<'ctx> VectorValue<'ctx> {
                 (&idx_new, body),
             ]);
 
-            for i in 0 .. N {
-                val_phi[i].add_incoming(&[
-                    (&val_beg[i], curr),
-                    (&val_new[i], body),
-                ]);
-            }
+            val_phi.add_incoming(&[
+                (&val_beg, curr),
+                (&val_new, body),
+            ]);
 
             Ok(val_old)
         } else {
@@ -425,27 +425,27 @@ impl<'ctx> OptionValue<'ctx> {
           ) -> Result<ScalarValue<'ctx>, Error>
     {
         let val = Self::build_empty(b, ty)?;
-        let [val] = Self::build_iter(b, ty, [val.id], |iter, [val]| {
+        let val = Self::build_iter(b, ty, val.id, |iter, val| {
             let new = (f)(iter)?;
             let val = Self { ty, id: val };
             let val = val.build_iter_put(b, new, iter)?;
-            Ok([val.id])
+            Ok(val.id)
         })?;
 
         Ok(Self { ty, id: val })
     }
 
     /// Build an iteration loop.
-    pub fn build_iter<F, const N: usize>(
+    pub fn build_iter<F>(
         b: &Builder<'ctx>,
         ty: OptionType,
-        val: [BasicValueEnum<'ctx>; N],
+        val: BasicValueEnum<'ctx>,
         f: F,
-    ) -> Result<[BasicValueEnum<'ctx>; N], Error>
+    ) -> Result<BasicValueEnum<'ctx>, Error>
     where F: FnOnce(
               Option<OptionIter<'ctx>>,
-              [BasicValueEnum<'ctx>; N],
-          ) -> Result<[BasicValueEnum<'ctx>; N], Error>
+              BasicValueEnum<'ctx>,
+          ) -> Result<BasicValueEnum<'ctx>, Error>
     {
         if let OptionPart::Some {} = ty.option {
             let curr = b.get_insert_block().unwrap();
@@ -468,15 +468,13 @@ impl<'ctx> OptionValue<'ctx> {
             b.build_unconditional_branch(post)?;
 
             b.position_at_end(post);
-            let val_phi = val.try_map(|v| b.build_phi(v.get_type(), ""))?;
-            let val_fin = val_phi.map(|v| v.as_basic_value());
+            let val_phi = b.build_phi(val.get_type(), "")?;
+            let val_fin = val_phi.as_basic_value();
 
-            for i in 0 .. N {
-                val_phi[i].add_incoming(&[
-                    (&val_new[i], body),
-                    (&val_old[i], fail),
-                ]);
-            }
+            val_phi.add_incoming(&[
+                (&val_new, body),
+                (&val_old, fail),
+            ]);
 
             Ok(val_fin)
         } else {
@@ -556,7 +554,7 @@ impl<'ctx> OptionValue<'ctx> {
         b: &Builder<'ctx>,
         ty: OptionType,
     ) -> Result<Self, Error> {
-        let data = ScalarValue::build_undef(b, ty.into())?;
+        let data = ScalarValue::build_poison(b, ty.into())?;
         if let OptionPart::Some {} = ty.option {
             let mask = b.ctx.custom_width_int_type(1).const_int(0, false);
             let id = b.ctx.const_struct(&[data.id, mask.into()], false).into();

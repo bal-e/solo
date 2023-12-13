@@ -65,6 +65,7 @@ impl<'ctx> Function<'ctx> {
             // Process the next loop.
             let Some(r#loop) = r#loop else { break };
 
+            // Process all streams in the loop.
             todo!()
         }
 

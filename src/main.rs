@@ -132,7 +132,13 @@ fn cmd_compile<'a>(
             .expect("Building the LIR should not fail!");
     }
 
+    lir_mod.verify();
     println!();
-    println!("LIR for '{}'", module.name);
+    println!("LIR for '{}':", module.name);
+    println!("{}", lir_mod.as_text());
+
+    lir_mod.optimize();
+    println!();
+    println!("Optimized LIR for '{}':", module.name);
     println!("{}", lir_mod.as_text());
 }
