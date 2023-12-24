@@ -41,9 +41,11 @@ expr = { expr_unit ~ (op_bin ~ expr_unit)* }
   expr_sufs = { atom ~ op_suf* }
 
 /// An atomic expression.
-atom = { expr_int | expr_cst | expr_var | expr_blk | "(" ~ expr ~ ")" }
+atom = { expr_int | expr_vec | expr_cst | expr_var | expr_blk | "(" ~ expr ~ ")" }
   /// An integer literal expression.
   expr_int = @{ ASCII_DIGIT+ }
+  /// A vector literal expression.
+  expr_vec = { "<" ~ (expr ~ ",")* ~ expr? ~ ">" }
   /// A cast expression.
   expr_cst = { "(" ~ type ~ ")" ~ expr_unit }
   /// A variable reference expression.

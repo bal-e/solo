@@ -8,7 +8,7 @@ impl Expr {
         match self {
             Self::Bin(bop, _) => bop.prec(),
             Self::Una(uop, _) => uop.prec(),
-            Self::BitCast(..) => Prec::UnaPre,
+            Self::Cast(..) => Prec::UnaPre,
             _ => Prec::Max,
         }
     }

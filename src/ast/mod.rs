@@ -87,11 +87,14 @@ pub enum Expr {
     /// A parenthesized expression.
     Par(ID<Self>),
 
-    /// A bitwise cast expression.
-    BitCast(MappedType, ID<Self>),
+    /// A cast expression.
+    Cast(MappedType, ID<Self>),
 
     /// An integer literal.
     Int(BigInt),
+
+    /// A vector literal.
+    Vec(SeqID<Self>),
 
     /// A reference to a local variable.
     Var(ID<Variable>),

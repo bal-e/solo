@@ -116,7 +116,7 @@ impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
                 return src;
             },
 
-            ast::Expr::BitCast(dstt, src) => {
+            ast::Expr::Cast(dstt, src) => {
                 let src = self.parse_expr(src, None);
                 let cop = {
                     if let StreamPart::Some { .. } = dstt.stream {
@@ -135,6 +135,10 @@ impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
 
             ast::Expr::Int(ref val) => {
                 Node::Int(val.clone())
+            },
+
+            ast::Expr::Vec(src) => {
+                todo!()
             },
 
             ast::Expr::Var(variable_id) => {

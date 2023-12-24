@@ -351,6 +351,7 @@ impl Expr {
         let i = i.into_inner().next().unwrap();
         match i.as_rule() {
             Rule::expr_int => Self::parse_int(i, p),
+            Rule::expr_vec => Self::parse_vec(i, p),
             Rule::expr_cst => Self::parse_cst(i, p),
             Rule::expr_var => Self::parse_var(i, p),
             Rule::expr_blk => Self::parse_blk(i, p),
@@ -368,6 +369,22 @@ impl Expr {
         Ok(Self::Int(i.as_str().parse().unwrap()))
     }
 
+    /// Parse a vector literal expression.
+    fn parse_vec(
+        i: Pair<'_, Rule>,
+        p: &mut Parser,
+    ) -> Result<Self, Error> {
+        assert_eq!(Rule::expr_vec, i.as_rule());
+        let mut pairs = i.into_inner();
+        let exprs = ExprsMut::try_put_seq_rec(p, |p| {
+            pairs
+                .next()
+                .map(|i| Expr::parse(i, p))
+                .transpose()
+        })?;
+        Ok(Self::Vec(exprs))
+    }
+
     /// Parse a cast expression.
     fn parse_cst(
         i: Pair<'_, Rule>,
@@ -380,7 +397,7 @@ impl Expr {
         let expr = Expr::parse_unit(pairs.next().unwrap(), p)?;
         let expr = p.storage.exprs.put(expr);
 
-        Ok(Self::BitCast(r#type, expr))
+        Ok(Self::Cast(r#type, expr))
     }
 
     /// Parse a variable reference expression.

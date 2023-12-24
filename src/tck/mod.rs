@@ -151,7 +151,7 @@ impl<'ast> Storage<'ast> {
 
             ast::Expr::Par(src) => (self.tck_expr(src, sup)?, Some(src)),
 
-            ast::Expr::BitCast(dt, src) => {
+            ast::Expr::Cast(dt, src) => {
                 let mut st = self.tck_expr(src, Partial::Max)?;
                 let mut dt: MappedType = dt.into();
 
@@ -178,6 +178,38 @@ impl<'ast> Storage<'ast> {
                     .with_part(Partial::Val(VectorPart::None))
                     .with_part(Partial::Val(StreamPart::None)),
                     None)
+            },
+
+            ast::Expr::Vec(src) => {
+                let min = MappedType {
+                    stream: Partial::Val(StreamPart::None),
+                    vector: Partial::Val(VectorPart::Some { size: 0 }),
+                    option: Partial::Val(OptionPart::None),
+                    scalar: Partial::Min,
+                };
+
+                src.iter().try_fold((min, None), |(pt, pe), ce| {
+                    // Type-check the current expression.
+                    let ct = self.tck_expr(ce, sup)?;
+
+                    // Merge it with the type of the previous expression.
+                    if let Some(pe) = pe {
+                        self.unify_exprs_min(pe, ce)?;
+                    }
+
+                    // Construct the vector type that would be returned.
+                    let ps = pt.vector.val()?.size().unwrap_or(1);
+                    let cs = ct.vector.val()?.size().unwrap_or(1);
+                    let vector = VectorPart::Some { size: ps + cs };
+                    let t = MappedType {
+                        stream: Subtyping::unify_max(pt.stream, ct.stream).ok()?,
+                        vector: Partial::Val(vector),
+                        option: Subtyping::unify_max(pt.option, ct.option).ok()?,
+                        scalar: Subtyping::unify_max(pt.scalar, ct.scalar).ok()?,
+                    };
+
+                    Ok::<_, Error>((t, Some(ce)))
+                })?
             },
 
             ast::Expr::Var(variable) => {

@@ -124,7 +124,7 @@ impl Expr {
                 w.write_parens(|w| src.write_syntax(w))
             },
 
-            Expr::BitCast(r#type, src) => {
+            Expr::Cast(r#type, src) => {
                 let src = w.storage.exprs.get(src);
 
                 w.write_parens(|w| write!(w, "{}", r#type))?;
@@ -138,6 +138,20 @@ impl Expr {
 
             Expr::Int(ref val) => {
                 write!(w, "{}", val)
+            },
+
+            Expr::Vec(src) => {
+                let src = w.storage.exprs.get_seq(src);
+
+                w.write_char('<')?;
+                for (i, expr) in src.iter().enumerate() {
+                    if i != 0 {
+                        w.write_str(", ")?;
+                    }
+                    expr.write_syntax(w)?;
+                }
+                w.write_char('>')?;
+                Ok(())
             },
 
             Expr::Var(variable) => {
