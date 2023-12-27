@@ -71,6 +71,9 @@ pub enum Node {
 
     /// An integer literal.
     Int(BigInt),
+
+    /// An empty vector.
+    Vec,
 }
 
 impl Language for Node {
@@ -82,6 +85,7 @@ impl Language for Node {
             (Self::MapCast(l, _), Self::MapCast(r, _)) => l == r,
             (Self::Arg(l), Self::Arg(r)) => l == r,
             (Self::Int(l), Self::Int(r)) => l == r,
+            (Self::Vec, Self::Vec) => true,
             _ => false,
         }
     }
@@ -92,7 +96,7 @@ impl Language for Node {
             Self::Una(_, x) => x,
             Self::BitCast(_, x) => slice::from_ref(x),
             Self::MapCast(_, x) => slice::from_ref(x),
-            Self::Arg(_) | Self::Int(_) => &[],
+            Self::Arg(_) | Self::Int(_) | Self::Vec => &[],
         }
     }
 
@@ -102,7 +106,7 @@ impl Language for Node {
             Self::Una(_, x) => x,
             Self::BitCast(_, x) => slice::from_mut(x),
             Self::MapCast(_, x) => slice::from_mut(x),
-            Self::Arg(_) | Self::Int(_) => &mut [],
+            Self::Arg(_) | Self::Int(_) | Self::Vec => &mut [],
         }
     }
 }

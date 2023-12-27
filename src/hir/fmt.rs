@@ -17,6 +17,7 @@ impl fmt::Display for Node {
             Self::MapCast(cop, _) => write!(f, "mapcast:{}", cop),
             Self::Arg(num) => write!(f, "arg:{}", num),
             Self::Int(val) => write!(f, "int:{}", val),
+            Self::Vec => f.write_str("vec"),
         }
     }
 }

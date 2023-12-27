@@ -138,7 +138,27 @@ impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
             },
 
             ast::Expr::Vec(src) => {
-                todo!()
+                let mapt = mapt.unwrap_or(dstt.into());
+                src.iter().fold((Node::Vec, 0), |(psrc, plen), csrc| {
+                    // Store the previous iteration's expression.
+                    let dstt = MappedType {
+                        vector: VectorPart::Some { size: plen },
+                        ..dstt
+                    };
+                    let prev = self.exprs.add(TypedNode { dstt, node: psrc });
+
+                    // Prepare this element with the necessary mapping.
+                    let clen = self.tck.get_expr_type(csrc)
+                        .vector.size().unwrap_or(1);
+                    let mapt = MappedPart {
+                        vector: VectorPart::Some { size: clen },
+                        ..mapt
+                    };
+                    let curr = self.parse_expr(csrc, Some(mapt));
+
+                    // Concatenate the previous result with this element.
+                    (Node::Bin(BinOp::Cat, [prev, curr]), plen + clen)
+                }).0
             },
 
             ast::Expr::Var(variable_id) => {
