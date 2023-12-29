@@ -3,6 +3,7 @@
 use core::iter;
 use core::num::NonZeroU32;
 
+use num_bigint::{BigInt, BigUint, Sign};
 use pest::{self, iterators::{Pair, Pairs}};
 use rustc_hash::FxHashMap;
 use thiserror::Error;
@@ -363,10 +364,31 @@ impl Expr {
     /// Parse an integer literal expression.
     fn parse_int(
         i: Pair<'_, Rule>,
-        _: &mut Parser,
+        p: &mut Parser,
     ) -> Result<Self, Error> {
         assert_eq!(Rule::expr_int, i.as_rule());
-        Ok(Self::Int(i.as_str().parse().unwrap()))
+        let mut pairs = i.into_inner();
+        let sign = match pairs.next().unwrap().as_str() {
+            "+" => Sign::Plus,
+            "-" => Sign::Minus,
+            "" => Sign::Plus,
+            _ => unreachable!(),
+        };
+        let value = pairs.next().unwrap();
+        let radix = match value.as_rule() {
+            Rule::expr_int_bin => 2,
+            Rule::expr_int_oct => 8,
+            Rule::expr_int_dec => 10,
+            Rule::expr_int_hex => 16,
+            _ => unreachable!(),
+        };
+        let value = value.as_str().as_bytes();
+        let value = BigUint::parse_bytes(value, radix).unwrap();
+        let value = BigInt::from_biguint(sign, value);
+        let r#type = pairs.next()
+            .map(|i| IntType::parse(i, p))
+            .transpose()?;
+        Ok(Self::Int(value, r#type))
     }
 
     /// Parse a vector literal expression.

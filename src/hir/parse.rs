@@ -133,7 +133,7 @@ impl<'ast: 'tck, 'tck> Parser<'ast, 'tck> {
                 Node::BitCast(cop, src)
             },
 
-            ast::Expr::Int(ref val) => {
+            ast::Expr::Int(ref val, _) => {
                 Node::Int(val.clone())
             },
 

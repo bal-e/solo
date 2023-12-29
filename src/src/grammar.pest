@@ -43,7 +43,25 @@ expr = { expr_unit ~ (op_bin ~ expr_unit)* }
 /// An atomic expression.
 atom = { expr_int | expr_vec | expr_cst | expr_var | expr_blk | "(" ~ expr ~ ")" }
   /// An integer literal expression.
-  expr_int = @{ ASCII_DIGIT+ }
+  expr_int = ${
+      expr_int_sign
+    ~ ( ("0b" ~ expr_int_bin)
+      | ("0o" ~ expr_int_oct)
+      | ("0x" ~ expr_int_hex)
+      | ("0d"? ~ expr_int_dec) )
+    ~ type_int?
+    ~ !ASCII_ALPHANUMERIC
+  }
+    /// The sign of an integer literal value.
+    expr_int_sign = @{ "-" | "+" | "" }
+    /// A binary integer literal value.
+    expr_int_bin = @{ ('0'..'1')+ }
+    /// An octal integer literal value.
+    expr_int_oct = @{ ('0'..'7')+ }
+    /// A decimal integer literal value.
+    expr_int_dec = @{ ('0'..'9')+ }
+    /// A hexadecimal integer literal value.
+    expr_int_hex = @{ ('0'..'9' | 'A'..'F' | 'a'..'f')+ }
   /// A vector literal expression.
   expr_vec = { "<" ~ (expr ~ ",")* ~ expr? ~ ">" }
   /// A cast expression.
@@ -66,9 +84,9 @@ op_suf   = { !ANY ~ ANY }
 /// A binary (infix) operator.
 op_bin   = { op_add | op_sub | op_mul | op_div | op_rem
            | op_and | op_ior | op_xor | op_shl | op_shr
-	   | op_cat | op_ind | op_exp | op_red
+     | op_cat | op_ind | op_exp | op_red
            | op_iseq | op_isne | op_isle | op_islt | op_isge | op_isgt
-	   | op_cond | op_else
+     | op_cond | op_else
            }
   /// Addition.
   op_add = { "+" }

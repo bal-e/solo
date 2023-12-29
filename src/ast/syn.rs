@@ -136,8 +136,12 @@ impl Expr {
                 Ok(())
             },
 
-            Expr::Int(ref val) => {
-                write!(w, "{}", val)
+            Expr::Int(ref val, it) => {
+                write!(w, "{}", val)?;
+                if let Some(it) = it {
+                    write!(w, "{}", it)?;
+                }
+                Ok(())
             },
 
             Expr::Vec(src) => {

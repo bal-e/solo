@@ -171,8 +171,9 @@ impl<'ast> Storage<'ast> {
                 (dt, None)
             },
 
-            ast::Expr::Int(_) => {
-                let res = Partial::Val(ScalarType::Int(Partial::Any));
+            ast::Expr::Int(_, it) => {
+                let res = it.map_or(Partial::Any, Partial::Val);
+                let res = Partial::Val(ScalarType::Int(res));
                 (Subtyping::infer(res, sup).ok()?
                     .with_part(Partial::Val(OptionPart::None))
                     .with_part(Partial::Val(VectorPart::None))

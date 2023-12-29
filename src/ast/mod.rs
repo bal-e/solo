@@ -91,7 +91,7 @@ pub enum Expr {
     Cast(MappedType, ID<Self>),
 
     /// An integer literal.
-    Int(BigInt),
+    Int(BigInt, Option<IntType>),
 
     /// A vector literal.
     Vec(SeqID<Self>),
